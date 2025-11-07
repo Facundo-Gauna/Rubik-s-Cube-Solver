@@ -1,274 +1,245 @@
-import os, json, time
+import threading
 from typing import Counter, Optional, Tuple, Dict, List
-from pathlib import Path
 
-from config import config
-from app_types import CubeState, DetectionResult
-from manual_detector import ManualDetectionWorkflow
+import kociemba
+try:
+    import kociemba_module as kociemba_mod
+except Exception:
+    kociemba_mod = None
+
+from config import CENTER_INDICES, FACE_ORDER, FACE_ORDER_IMG_1, FACE_ORDER_IMG_2, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, CubeState, DetectionResult
+from detector import EXPECTED_COLORS, ColorDetector, ParallelCubeDetector, SynchronizedColorCorrectionUI, SynchronizedPolygonDetector, rotate_block_list, build_color_net_text, brute_force_face_orientations
 
 
 class CubeStatus:
     def __init__(self):
-        self.manual_detector = ManualDetectionWorkflow()
         self.cube_state = CubeState()
-        self.side_order = config.SIDE_ORDER
+        self.cube_detector = ParallelCubeDetector()
+        self.sync_detector = SynchronizedPolygonDetector()
+        self.detector = ColorDetector()
 
-    def detect_status_manual(self) -> DetectionResult:
+        self.pos1 = None
+        self.pos2 = None
+        self.det1 = None
+        self.det2 = None
+        self.labs1 = None
+        self.labs2 = None
+        self.corrected1 = None
+        self.corrected2 = None
+        
+        self.have_sol : bool = False
+
+
+    def detect(self):
+        print("=== STEP 1: Defining positions for both images ===")
+        self.pos1, self.pos2 = self.sync_detector.define_positions_both()
+        if not  self.pos1 or not self.pos2:
+            raise Exception("Failed to get positions for both images")
+
+        print("\n=== STEP 2: Detecting colors in parallel ===")
+        def job1():
+            self.det1, self.labs1 = self.detector.detect_single_image(IMG1_PATH, self.pos1)
+            print("✓ Image 1 colors detected")
+
+        def job2():
+            self.det2, self.labs2 = self.detector.detect_single_image(IMG2_PATH, self.pos2)
+            print("✓ Image 2 colors detected")
+
+        t1 = threading.Thread(target=job1)
+        t2 = threading.Thread(target=job2)
+        t1.start(); t2.start()
+        t1.join(); t2.join()
+        
+        print("✓ Both image colors detected successfully!")
+        
+        print("\n=== STEP 3: Color Correction for both images ===")
+        if not (self.pos1 and self.det1 and self.labs1 and self.pos2 and self.det2 and self.labs2):
+            raise Exception("Must run detection before color correction")
+
+        sync_correction = SynchronizedColorCorrectionUI(
+            self.pos1, self.pos2,
+            self.det1, self.labs1,
+            self.det2, self.labs2
+        )
+
+        self.corrected1, corrected_labs1, self.corrected2, corrected_labs2 = sync_correction.run_both()
+        print("✓ Both image colors corrected successfully!")
+
+
+    def build_facelets_and_solve(self):
+        """
+        Build the canonical 54-color string and facelet string using corrected mappings.
+        First image contains U,F,L (provided in this file), second contains D,R,B.
+        The canonical face order needed by kociemba is U,R,F,D,L,B.
+        """
+        if not (self.corrected1 and self.corrected2):
+            raise Exception("Run color correction first")
+
+        mapping = {}
+        mapping.update(self.corrected1 or {})
+        mapping.update(self.corrected2 or {})
+
+        # Build color_str in U,R,F,D,L,B order
+        colors = []
+        missing = []
+        for face in FACE_ORDER:
+            for i in range(1, 10):
+                k = f"{face}{i}"
+                if k not in mapping:
+                    missing.append(k)
+                    colors.append('X')
+                else:
+                    colors.append(mapping[k])
+        if missing:
+            raise ValueError(f"Missing stickers: {missing}")
+        color_str = ''.join(colors)
+        print("Built color string:", color_str)
+        print(build_color_net_text(color_str))
+
+        # Quick counts
+        ctr = Counter(color_str)
+        print("Color counts:", ctr)
+        if any(ctr.get(c, 0) != 9 for c in EXPECTED_COLORS):
+            print("WARNING: not all colors have 9 occurrences")
+
+        # Map center colors -> faces
+        color_to_face = {}
+        for face_letter, idx in CENTER_INDICES.items():
+            center_color = color_str[idx]
+            if center_color in color_to_face:
+                print("ERROR: center duplicated:", center_color)
+            color_to_face[center_color] = face_letter
+        if len(color_to_face) != 6:
+            print("ERROR: Centers mapping invalid:", color_to_face)
+            candidate_facelets, sol = brute_force_face_orientations(color_str)
+            if candidate_facelets:
+                print("Brute-force rotation produced valid facelet string")
+                return color_str, candidate_facelets, sol
+            raise ValueError("Invalid centers mapping - cannot proceed")
+
+        facelet_str = ''.join(color_to_face.get(c, '?') for c in color_str)
+        print("Converted facelet string:", facelet_str)
+
+        if kociemba is not None:
+            try:
+                sol = kociemba.solve(facelet_str)
+                print("kociemba solution:", sol)
+                return color_str, facelet_str, sol
+            except Exception as e:
+                print("kociemba rejected facelet string:", e)
+                # try brute force of face rotations
+                candidate_facelets, sol = brute_force_face_orientations(color_str)
+                if candidate_facelets:
+                    return color_str, candidate_facelets, sol
+                raise ValueError("Solver rejected the facelet string and brute-force failed.")
+        else:
+            print("kociemba not available; returning facelets for inspection")
+            return color_str, facelet_str, None
+
+
+    def detect_status(self) -> DetectionResult:
         try:
-            result = self.manual_detector.run()
-            ok,sol,color_str = result
-
+            self.detect()
+            color_str, facelet,sol = self.build_facelets_and_solve()
+            self.have_sol = sol != None 
             return DetectionResult(
-                color_str==color_str,
+                color_str=color_str,
                 solution_str=sol,
-                has_errors=ok,
-            )    
+                face_str=facelet,
+                has_errors= sol != None,
+            )
         except Exception as e:
-            print(f"Manual detection failed: {e}")
-            raise
+            print(f"Detection failed: {e}")
+            return DetectionResult(
+                color_str='',
+                solution_str='',
+                face_str='',
+                has_errors=True,
+            )
+
+
+    def solve(self) -> Tuple[bool,str]:
+        if self.have_sol:
+            return True,"Solved"
+        self.have_sol = True
+        try:
+            sol = kociemba.solve(self.cube_state.face_status)
+            self.cube_state.solution = sol
+            return True,"Solved"
+        except Exception as e:
+            candidate_facelets, sol = brute_force_face_orientations(self.cube_state.color_status)
+            self.cube_state.face_status = candidate_facelets
+            self.cube_state.solution = sol
+            if candidate_facelets:
+                return True,"Solved"
+            self.have_sol = False
+            return False,"Solver rejected the facelet string and brute-force failed."
 
     def update_sticker(self, side: str, sticker_pos: str, color: str):
         try:
-            face_index = self.side_order.index(side)
+            face_index = FACE_ORDER.index(side)
             sticker_num = int(sticker_pos[1:]) - 1
             status_index = face_index * 9 + sticker_num
             
             status_list = list(self.cube_state.color_status)
             status_list[status_index] = color
-            self.cube_state.color_status = ''.join(status_list)
+            self.cube_state.colors_status_set(''.join(status_list))
+            
+            self.have_sol = False # if a cube state suffer a change and it had a solution to make, it is delted
             
             print(f"Updated {side}{sticker_pos} to {color}")
             
         except (ValueError, IndexError) as e:
             raise ValueError(f"Invalid sticker position: {side}{sticker_pos}") from e
 
-    def validate_state(self) -> Tuple[bool, List[str]]:
-        """Validate cube state has correct color distribution"""
-        from collections import Counter
-        color_counts = Counter(self.cube_state.color_status)
-        
-        issues = []
-        for color, count in color_counts.items():
-            if count != 9:
-                issues.append(f"Color {color} has {count} stickers (should be 9)")
-        
-        return len(issues) == 0, issues
 
-    def convert_to_face_status(self, color_status: str = None) -> str:
-        """Convert color-based status to face-based status for kociemba solver"""
-        if color_status is None:
-            color_status = self.cube_state.color_status
-            
-        face_color_order = ['R','G','W','O','B','Y']
-        face_mapping = {
-            'R': 'U',  # Red to Up
-            'G': 'R',  # Green to Right  
-            'W': 'F',  # White to Front
-            'O': 'D',  # Orange to Down
-            'B': 'L',  # Blue to Left
-            'Y': 'B'   # Yellow to Back
-        }
-        
-        return ''.join(face_mapping.get(color, 'U') for color in color_status)
+    def validate_state(self) -> Tuple[bool, str]:
+        try:
+            fc = kociemba_mod.FaceCube(self.cube_state.face_status)
+            status = fc.toCubieCube().verify()
+            match status:
+                case -2: return False, "Not all 12 edges exist exactly once"
+                case -3: return False, "Flip error: One edge has to be flipped"
+                case -4: return False, "Not all corners exist exactly once"
+                case -5: return False, "Twist error: One corner has to be twisted"
+                case -6: return False, "Parity error: Two corners ore two edges have to be exchanged"
+                case _: return True,"Cube OK"
+        except Exception as e:
+            return False,e
 
-    @property
-    def current_status(self) -> str:
-        return self.cube_state.color_status
+        return False,"Unexpected...."
 
-    @current_status.setter
-    def current_status(self, value: str):
-        self.cube_state.color_status = value
+    # --------- Manual changer of status ----------
 
-    @property
-    def side_to_color(self) -> Dict[str, str]:
-        return self.cube_state.side_to_color
-
-    @side_to_color.setter
-    def side_to_color(self, value: Dict[str, str]):
-        self.cube_state.side_to_color = value
-    
-    # To UI movements.
-    def change_status(self, input_status: str, moves: List[str]) -> str:
+    def change_status(self, moves: List[str]):
         if not moves:
-            return input_status
-            
-        cube = list(input_status)
-        
-        for move in moves:
-            cube = self._apply_move_to_list(cube, move)
-            
-        return ''.join(cube)
-    
-    def _apply_move_to_list(self, cube: List[str], move: str) -> List[str]:
-        """Apply a single move to the cube list"""
-        new_cube = cube.copy()
-        
-        if move == "U":
-            self._rotate_face(new_cube, 0, True)  # U face clockwise
-            # Rotate top layer
-            temp = [new_cube[18], new_cube[19], new_cube[20]]  # F top
-            new_cube[18], new_cube[19], new_cube[20] = new_cube[9], new_cube[10], new_cube[11]  # F <- R
-            new_cube[9], new_cube[10], new_cube[11] = new_cube[45], new_cube[46], new_cube[47]  # R <- B  
-            new_cube[45], new_cube[46], new_cube[47] = new_cube[36], new_cube[37], new_cube[38]  # B <- L
-            new_cube[36], new_cube[37], new_cube[38] = temp[0], temp[1], temp[2]  # L <- F
-            
-        elif move == "U'":
-            self._rotate_face(new_cube, 0, False)  # U face counterclockwise
-            # Rotate top layer counterclockwise
-            temp = [new_cube[18], new_cube[19], new_cube[20]]  # F top
-            new_cube[18], new_cube[19], new_cube[20] = new_cube[36], new_cube[37], new_cube[38]  # F <- L
-            new_cube[36], new_cube[37], new_cube[38] = new_cube[45], new_cube[46], new_cube[47]  # L <- B
-            new_cube[45], new_cube[46], new_cube[47] = new_cube[9], new_cube[10], new_cube[11]  # B <- R
-            new_cube[9], new_cube[10], new_cube[11] = temp[0], temp[1], temp[2]  # R <- F
-            
-        elif move == "U2":
-            new_cube = self._apply_move_to_list(new_cube, "U")
-            new_cube = self._apply_move_to_list(new_cube, "U")
-            
-        elif move == "R":
-            self._rotate_face(new_cube, 9, True)  # R face clockwise
-            # Rotate right layer
-            temp = [new_cube[20], new_cube[23], new_cube[26]]  # F right
-            new_cube[20], new_cube[23], new_cube[26] = new_cube[27], new_cube[30], new_cube[33]  # F <- D
-            new_cube[27], new_cube[30], new_cube[33] = new_cube[47], new_cube[44], new_cube[41]  # D <- B (reversed)
-            new_cube[47], new_cube[44], new_cube[41] = new_cube[2], new_cube[5], new_cube[8]  # B <- U (reversed)
-            new_cube[2], new_cube[5], new_cube[8] = temp[0], temp[1], temp[2]  # U <- F
-            
-        elif move == "R'":
-            self._rotate_face(new_cube, 9, False)  # R face counterclockwise
-            # Rotate right layer counterclockwise
-            temp = [new_cube[20], new_cube[23], new_cube[26]]  # F right
-            new_cube[20], new_cube[23], new_cube[26] = new_cube[2], new_cube[5], new_cube[8]  # F <- U
-            new_cube[2], new_cube[5], new_cube[8] = new_cube[47], new_cube[44], new_cube[41]  # U <- B (reversed)
-            new_cube[47], new_cube[44], new_cube[41] = new_cube[27], new_cube[30], new_cube[33]  # B <- D (reversed)
-            new_cube[27], new_cube[30], new_cube[33] = temp[0], temp[1], temp[2]  # D <- F
-            
-        elif move == "R2":
-            new_cube = self._apply_move_to_list(new_cube, "R")
-            new_cube = self._apply_move_to_list(new_cube, "R")
-            
-        elif move == "F":
-            self._rotate_face(new_cube, 18, True)  # F face clockwise
-            # Rotate front layer
-            temp = [new_cube[6], new_cube[7], new_cube[8]]  # U bottom
-            new_cube[6], new_cube[7], new_cube[8] = new_cube[36], new_cube[39], new_cube[42]  # U <- L (reversed)
-            new_cube[36], new_cube[39], new_cube[42] = new_cube[29], new_cube[28], new_cube[27]  # L <- D (reversed)
-            new_cube[29], new_cube[28], new_cube[27] = new_cube[11], new_cube[14], new_cube[17]  # D <- R (reversed)
-            new_cube[11], new_cube[14], new_cube[17] = temp[0], temp[1], temp[2]  # R <- U
-            
-        elif move == "F'":
-            self._rotate_face(new_cube, 18, False)  # F face counterclockwise
-            # Rotate front layer counterclockwise
-            temp = [new_cube[6], new_cube[7], new_cube[8]]  # U bottom
-            new_cube[6], new_cube[7], new_cube[8] = new_cube[11], new_cube[14], new_cube[17]  # U <- R
-            new_cube[11], new_cube[14], new_cube[17] = new_cube[29], new_cube[28], new_cube[27]  # R <- D (reversed)
-            new_cube[29], new_cube[28], new_cube[27] = new_cube[36], new_cube[39], new_cube[42]  # D <- L (reversed)
-            new_cube[36], new_cube[39], new_cube[42] = temp[0], temp[1], temp[2]  # L <- U (reversed)
-            
-        elif move == "F2":
-            new_cube = self._apply_move_to_list(new_cube, "F")
-            new_cube = self._apply_move_to_list(new_cube, "F")
-            
-        elif move == "D":
-            self._rotate_face(new_cube, 27, True)  # D face clockwise
-            # Rotate bottom layer
-            temp = [new_cube[24], new_cube[25], new_cube[26]]  # F bottom
-            new_cube[24], new_cube[25], new_cube[26] = new_cube[38], new_cube[41], new_cube[44]  # F <- L
-            new_cube[38], new_cube[41], new_cube[44] = new_cube[45], new_cube[48], new_cube[51]  # L <- B
-            new_cube[45], new_cube[48], new_cube[51] = new_cube[15], new_cube[12], new_cube[9]  # B <- R (reversed)
-            new_cube[15], new_cube[12], new_cube[9] = temp[0], temp[1], temp[2]  # R <- F
-            
-        elif move == "D'":
-            self._rotate_face(new_cube, 27, False)  # D face counterclockwise
-            # Rotate bottom layer counterclockwise
-            temp = [new_cube[24], new_cube[25], new_cube[26]]  # F bottom
-            new_cube[24], new_cube[25], new_cube[26] = new_cube[15], new_cube[12], new_cube[9]  # F <- R (reversed)
-            new_cube[15], new_cube[12], new_cube[9] = new_cube[45], new_cube[48], new_cube[51]  # R <- B
-            new_cube[45], new_cube[48], new_cube[51] = new_cube[38], new_cube[41], new_cube[44]  # B <- L
-            new_cube[38], new_cube[41], new_cube[44] = temp[0], temp[1], temp[2]  # L <- F
-            
-        elif move == "D2":
-            new_cube = self._apply_move_to_list(new_cube, "D")
-            new_cube = self._apply_move_to_list(new_cube, "D")
-            
-        elif move == "L":
-            self._rotate_face(new_cube, 36, True)  # L face clockwise
-            # Rotate left layer
-            temp = [new_cube[18], new_cube[21], new_cube[24]]  # F left
-            new_cube[18], new_cube[21], new_cube[24] = new_cube[0], new_cube[3], new_cube[6]  # F <- U
-            new_cube[0], new_cube[3], new_cube[6] = new_cube[53], new_cube[50], new_cube[47]  # U <- B (reversed)
-            new_cube[53], new_cube[50], new_cube[47] = new_cube[33], new_cube[30], new_cube[27]  # B <- D (reversed)
-            new_cube[33], new_cube[30], new_cube[27] = temp[0], temp[1], temp[2]  # D <- F
-            
-        elif move == "L'":
-            self._rotate_face(new_cube, 36, False)  # L face counterclockwise
-            # Rotate left layer counterclockwise
-            temp = [new_cube[18], new_cube[21], new_cube[24]]  # F left
-            new_cube[18], new_cube[21], new_cube[24] = new_cube[33], new_cube[30], new_cube[27]  # F <- D
-            new_cube[33], new_cube[30], new_cube[27] = new_cube[53], new_cube[50], new_cube[47]  # D <- B (reversed)
-            new_cube[53], new_cube[50], new_cube[47] = new_cube[0], new_cube[3], new_cube[6]  # B <- U (reversed)
-            new_cube[0], new_cube[3], new_cube[6] = temp[0], temp[1], temp[2]  # U <- F
-            
-        elif move == "L2":
-            new_cube = self._apply_move_to_list(new_cube, "L")
-            new_cube = self._apply_move_to_list(new_cube, "L")
-            
-        elif move == "B":
-            self._rotate_face(new_cube, 45, True)  # B face clockwise
-            # Rotate back layer
-            temp = [new_cube[0], new_cube[1], new_cube[2]]  # U top
-            new_cube[0], new_cube[1], new_cube[2] = new_cube[17], new_cube[14], new_cube[11]  # U <- R (reversed)
-            new_cube[17], new_cube[14], new_cube[11] = new_cube[35], new_cube[34], new_cube[33]  # R <- D (reversed)
-            new_cube[35], new_cube[34], new_cube[33] = new_cube[42], new_cube[39], new_cube[36]  # D <- L (reversed)
-            new_cube[42], new_cube[39], new_cube[36] = temp[0], temp[1], temp[2]  # L <- U
-            
-        elif move == "B'":
-            self._rotate_face(new_cube, 45, False)  # B face counterclockwise
-            # Rotate back layer counterclockwise
-            temp = [new_cube[0], new_cube[1], new_cube[2]]  # U top
-            new_cube[0], new_cube[1], new_cube[2] = new_cube[42], new_cube[39], new_cube[36]  # U <- L
-            new_cube[42], new_cube[39], new_cube[36] = new_cube[35], new_cube[34], new_cube[33]  # L <- D (reversed)
-            new_cube[35], new_cube[34], new_cube[33] = new_cube[17], new_cube[14], new_cube[11]  # D <- R (reversed)
-            new_cube[17], new_cube[14], new_cube[11] = temp[0], temp[1], temp[2]  # R <- U (reversed)
-            
-        elif move == "B2":
-            new_cube = self._apply_move_to_list(new_cube, "B")
-            new_cube = self._apply_move_to_list(new_cube, "B")
-            
-        return new_cube
-    
-    def _rotate_face(self, cube: List[str], face_start: int, clockwise: bool):
-        """Rotate a face clockwise or counterclockwise"""
-        indices = [
-            face_start, face_start+1, face_start+2,
-            face_start+3, face_start+4, face_start+5, 
-            face_start+6, face_start+7, face_start+8
-        ]
-        
-        if clockwise:
-            # Clockwise rotation
-            temp = cube[indices[0]]
-            cube[indices[0]] = cube[indices[6]]
-            cube[indices[6]] = cube[indices[8]]
-            cube[indices[8]] = cube[indices[2]]
-            cube[indices[2]] = temp
-            
-            temp = cube[indices[1]]
-            cube[indices[1]] = cube[indices[3]]
-            cube[indices[3]] = cube[indices[7]]
-            cube[indices[7]] = cube[indices[5]]
-            cube[indices[5]] = temp
-        else:
-            # Counterclockwise rotation
-            temp = cube[indices[0]]
-            cube[indices[0]] = cube[indices[2]]
-            cube[indices[2]] = cube[indices[8]]
-            cube[indices[8]] = cube[indices[6]]
-            cube[indices[6]] = temp
-            
-            temp = cube[indices[1]]
-            cube[indices[1]] = cube[indices[5]]
-            cube[indices[5]] = cube[indices[7]]
-            cube[indices[7]] = cube[indices[3]]
-            cube[indices[3]] = temp
-   
+            return 
+
+        self.have_sol = False
+        facelet_str = self.cube_state.face_status
+        print("moves : "+ ("".join(moves)))
+        print("facelet init : "+ facelet_str)
+        try:
+            fc = kociemba_mod.FaceCube(facelet_str)
+            cc = fc.toCubieCube()
+            move_index = {'U':0, 'R':1, 'F':2, 'D':3, 'L':4, 'B':5}
+            for mv in moves:
+                if not mv: 
+                    continue
+                base = mv[0].upper()
+                if base not in move_index:
+                    continue
+                idx = move_index[base]
+                if mv.endswith("2"):
+                    times = 2
+                elif mv.endswith("'"):
+                    times = 3  # inverse = apply 3 times
+                else:
+                    times = 1
+                for _ in range(times):
+                    cc.multiply(kociemba_mod.moveCube[idx])
+            new_facelet = cc.toFaceCube().to_String()
+            self.cube_state.face_status_set(new_facelet)
+        except Exception as e:
+            print("kociemba_module move application failed, falling back:", e)
+
