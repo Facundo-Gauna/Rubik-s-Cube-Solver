@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rubik's Cube Solver</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Rubik's Cube Solver</h1>
+    <div class="status">
+      <span class="status-dot connected"></span>
+      <p>Robot conectado</p>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <!-- Sección del cubo -->
+    <section class="cube-area">
+      <div id="cuboContainer"></div>
+    </section>
+
+    <!-- Panel lateral -->
+    <aside class="side-panel">
+      <div class="panel-header">
+        <h2 id="panel-title">Panel de control</h2>
+      </div>
+      <div class="panel-content" id="panel-content">
+        <!-- Contenido dinámico -->
+      </div>
+    </aside>
+  </main>
+
+  <footer class="bottom-bar">
+    <div class="bottom-left">
+      <button class="action-btn" id="solve-btn">🧠 Resolver</button>
+      <button class="action-btn" id="scramble-btn">🔀 Scramble</button>
+      <button class="action-btn" id="patterns-btn">🎨 Patrones</button>
+      <button class="action-btn" id="scan-btn">📸 Escanear</button>
+      <button class="action-btn" id="settings-btn">⚙️ Ajustes</button>
+    </div>
+    <div class="bottom-right">
+      <p class="credits">Proyecto de Ulises Carnevale y Facundo Gauna</p>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="js/cubo3d.js"></script>
+  <script src="js/script.js"></script>
+
+  <script>
+    // Inicializamos el cubo dentro del div
+    const container = document.getElementById('cuboContainer');
+    const rubik = initRubik3D(container);
+  </script>
+</body>
+</html>

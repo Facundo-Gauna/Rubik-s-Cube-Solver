@@ -1,18 +1,3 @@
-# Writing the combined UI file to /mnt/data/runUi_combined.py for the user to download and test.
-"""
-runUi_combined.py
-
-Combined UI: merges the complete app UI (main window, camera, cube controls)
-with the improved detection workflow UI (polygon editors + color corrector).
-Polished CSS and integrated flow:
- - "Detect Cube State" (automatic background detection) remains.
- - "Open Detections Panel" launches the interactive polygon->detect->correct flow.
-Requirements: local modules (detector.py, cube_status.py, calibrator.py, control.py, config.py)
-should be present and export the classes used.
-
-Save as runUi_combined.py and run: python runUi_combined.py
-"""
-
 import sys
 import time
 import json
@@ -34,7 +19,7 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize, QPoint
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QFont, QPen, QKeySequence
 
 from calibrator import CalibrationManager
-from config import CAMERA_RESOLUTION, COLOR_INIT_STATE, COPYRIGHT_MARK, DARK_THEME, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, THUMBNAIL_RESOLUTION, DetectionResult
+from config import CAMERA_RESOLUTION, COLOR_INIT_STATE, COPYRIGHT_MARK, DARK_THEME, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, THUMBNAIL_RESOLUTION, DetectionResult
 from cube_status import CubeStatus
 from control import MotorController
 
@@ -618,9 +603,10 @@ class CorrectionDialog(QDialog):
 # ---------------- Main app UI ----------------
 
 class CameraController:
+    
     def __init__(self):
         self.cap = None
-        self.current_camera_index = -1
+        self.current_camera_index = 0
         self.is_initialized = False
         self.last_frame = None
 
@@ -704,32 +690,133 @@ class CameraWidget(QLabel):
         self.setAlignment(Qt.AlignCenter)
         self.setText("Camera feed will appear here")
         self.setStyleSheet("border-radius: 8px; background-color: #111; color: #bbb; padding: 6px;")
+        self.pos1 = None
+        self.pos2 = None
+        self.load_positions()
 
-    def set_frame(self, frame: np.ndarray):
+    def set_frame(self, frame: np.ndarray, idx: int = 1, new_pos: bool = False):
+        """
+        Draw camera frame and overlay saved polygon points for the given image index.
+        idx: 1 or 2
+        new_pos: if True will reload positions from disk before drawing.
+        """
         if frame is None or frame.size == 0:
             return
+        if new_pos:
+            self.load_positions()
+
         try:
+            # original frame dims
+            ih, iw = frame.shape[:2]
+
+            # convert to RGB QImage
             rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            h, w, ch = rgb_image.shape
-            bytes_per_line = ch * w
-            qt_image = QImage(rgb_image.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            scaled_pixmap = QPixmap.fromImage(qt_image).scaled(
+            bytes_per_line = 3 * iw
+            qimage = QImage(rgb_image.data, iw, ih, bytes_per_line, QImage.Format_RGB888)
+
+            # scaled pixmap keeping aspect ratio
+            scaled_pixmap = QPixmap.fromImage(qimage).scaled(
                 self.width(), self.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
+            pw, ph = scaled_pixmap.width(), scaled_pixmap.height()
+
+            # final pixmap (background + scaled image centered)
             final_pixmap = QPixmap(self.width(), self.height())
             final_pixmap.fill(QColor("#111"))
+
             painter = QPainter(final_pixmap)
-            x = (self.width() - scaled_pixmap.width()) // 2
-            y = (self.height() - scaled_pixmap.height()) // 2
-            painter.drawPixmap(x, y, scaled_pixmap)
+            painter.setRenderHint(QPainter.Antialiasing)
+
+            x_off = (self.width() - pw) // 2
+            y_off = (self.height() - ph) // 2
+            painter.drawPixmap(x_off, y_off, scaled_pixmap)
+
+            # draw rounded border
             pen = QPen(QColor(80, 80, 80))
             pen.setWidth(2)
             painter.setPen(pen)
-            painter.drawRoundedRect(1, 1, self.width()-2, self.height()-2, 6, 6)
+            painter.drawRoundedRect(1, 1, self.width() - 2, self.height() - 2, 6, 6)
+
+            # overlay saved positions (map saved-image coords -> pixmap coords)
+            positions = self.pos1 if idx == 1 else self.pos2
+            img_width, img_height = CAMERA_RESOLUTION
+            if positions:
+                fill_brush = QColor(255, 220, 80, 180)  # semi-transparent yellow
+                outline_pen = QPen(QColor(200, 180, 60, 220))
+                outline_pen.setWidth(2)
+                painter.setPen(outline_pen)
+                painter.setBrush(fill_brush)
+
+                for k, v in positions.items():
+                    try:
+                        vx, vy = v
+                        # detect normalized coords: small floats <= 1.0
+                        if 0.0 <= vx <= 1.0 and 0.0 <= vy <= 1.0:
+                            img_x = int(vx * img_width)
+                            img_y = int(vy * img_height)
+                        else:
+                            # assume pixel coords already
+                            img_x = int(vx)
+                            img_y = int(vy)
+
+                        # map image (base_w,base_h) coords to pixmap coords (pw,ph)
+                        px = x_off + int(img_x * (pw / img_width))
+                        py = y_off + int(img_y * (ph / img_height))
+
+                        # clamp into pixmap area (avoid drawing outside)
+                        px = max(x_off, min(x_off + pw - 1, px))
+                        py = max(y_off, min(y_off + ph - 1, py))
+
+                        # draw marker (+ halo)
+                        painter.setBrush(fill_brush)
+                        painter.setPen(outline_pen)
+                        painter.drawEllipse(px - 6, py - 6, 12, 12)
+
+                        halo_pen = QPen(QColor(255, 255, 255, 80))
+                        halo_pen.setWidth(1)
+                        painter.setPen(halo_pen)
+                        painter.setBrush(Qt.NoBrush)
+                        painter.drawEllipse(px - 10, py - 10, 20, 20)
+
+                        # small numeric label
+                        label_pen = QPen(QColor(20, 20, 20))
+                        painter.setPen(label_pen)
+                        font = painter.font()
+                        font.setPointSize(8)
+                        font.setBold(True)
+                        painter.setFont(font)
+                        painter.drawText(px - 6, py + 4, str(k))
+
+                    except Exception as ee:
+                        logger.debug(f"Failed drawing position {k}:{v} -> {ee}")
+                        continue
+
+                # small top-left helper label on the image
+                helper_pen = QPen(QColor(220, 220, 220, 200))
+                painter.setPen(helper_pen)
+                font = painter.font()
+                font.setPointSize(9)
+                font.setBold(True)
+                painter.setFont(font)
+                painter.drawText(x_off + 8, y_off + 20, "Polygon guide loaded")
+
             painter.end()
+
+            # set result to label
             self.setPixmap(final_pixmap)
         except Exception as e:
-            logger.error(f"Error setting camera frame: {e}")
+            logger.error(f"Error setting camera frame with overlay: {e}")
+
+    def load_positions(self):
+        try:
+            raw1 = json.load(open(POLYGON_POSITIONS_PATH_1,'r'))["positions"]
+            raw2 = json.load(open(POLYGON_POSITIONS_PATH_2,'r'))["positions"]
+            if isinstance(raw1, dict):
+                self.pos1 = {str(k): (int(v[0]), int(v[1])) for k, v in raw1.items()}
+            if isinstance(raw2, dict):
+                self.pos2 = {str(k): (int(v[0]), int(v[1])) for k, v in raw2.items()}
+        except Exception as e:
+            logger.info(f"No valid polygon json: {e}")
 
 class ThumbnailWidget(QLabel):
     def __init__(self, parent=None):
@@ -769,7 +856,7 @@ class MoveButton(QPushButton):
     def __init__(self, move: str, parent=None):
         super().__init__(move, parent)
         self.move = move
-        self.setFixedSize(48, 40)
+        self.setFixedSize(24, 20)
         self.setCursor(Qt.PointingHandCursor)
         move_colors = {
             'U': '#FF6B6B', 'F': '#6BFF6B', 'L': '#6B6BFF',
@@ -923,6 +1010,7 @@ class MainWindow(QMainWindow):
         self.detection_worker: Optional[DetectionWorker] = None
         self.is_processing = False
         self.prime_mode = False
+        self.new_positions = False
 
         self._setup_ui()
         self._connect_signals()
@@ -1041,9 +1129,9 @@ class MainWindow(QMainWindow):
     def _make_thumb_column(self, title: str, widget: ThumbnailWidget, info: str) -> QWidget:
         box = QWidget()
         layout = QVBoxLayout(box)
-        #lbl = QLabel(title)
-        #lbl.setStyleSheet("font-weight:bold; color:#ddd;")
-        #layout.addWidget(lbl)
+        lbl = QLabel(title)
+        lbl.setStyleSheet("font-weight:bold; color:#ddd;")
+        layout.addWidget(lbl)
         layout.addWidget(widget)
         info_lbl = QLabel(info)
         info_lbl.setStyleSheet("background:#111; padding:6px; border-radius:6px; color:#ddd;")
@@ -1206,7 +1294,9 @@ class MainWindow(QMainWindow):
     def _update_camera_display(self):
         frame = self.camera_controller.capture_frame()
         if frame is not None:
-            self.camera_widget.set_frame(frame)
+            self.camera_widget.set_frame(frame,self.captured_images_count+1,self.new_positions)
+        if self.new_positions:
+            self.new_positions = False
 
     def _capture_image(self):
         if self.is_processing:
@@ -1266,6 +1356,7 @@ class MainWindow(QMainWindow):
         self._set_processing_state(False, "Detection completed")
         self._log("Detection finished")
         try:
+            self.new_positions = True
             self.cube_status.cube_state.color_status = result.color_str
             self.cube_status.cube_state.face_status = result.face_str
             self.cube_status.cube_state.solution = result.solution_str
@@ -1337,7 +1428,7 @@ class MainWindow(QMainWindow):
             self._set_processing_state(False)
 
     def _send_custom_sequence(self):
-        moves = self.sequence_input.text().strip()
+        moves = self.sequence_input.text()
         if not moves:
             self._show_warning("No moves", "Enter a move sequence first")
             return

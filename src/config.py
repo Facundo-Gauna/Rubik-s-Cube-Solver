@@ -44,7 +44,7 @@ def init_const():
 CAMERA_RESOLUTION: Tuple[int, int] = (1980, 1080)
 THUMBNAIL_RESOLUTION: Tuple[int, int] = (160, 90)
 
-BASE_DIR: Path = Path(__file__)
+BASE_DIR: Path = Path(__file__).parent
 PICTURES_DIR: Path = BASE_DIR / "pictures"
 
 IMG1_PATH : Path = PICTURES_DIR / "detector1.png"

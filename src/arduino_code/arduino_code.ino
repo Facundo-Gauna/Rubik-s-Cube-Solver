@@ -1,9 +1,12 @@
-// fast_controller.ino
-// Arduino Mega sketch — simplified protocol (no calibration), sends OK after operations.
-// Protocol:
+// fast_controller_debug.ino
+// Improved parser + debug for the Rubik motors controller.
+//
+// Protocol (same):
 //  - "T\n"                => run test sequence (rotates each motor) and replies "OK\n"
-//  - "<sequence>\n"       => sequence of tokens (space separated), replies "OK\n" when finished
-// Tokens: R, R', R2, U, U', U2, etc.
+//  - "<sequence>\n"       => tokens space separated: R, R', R2, U, U', U2, ...
+//  - "DBG\n"              => toggles verbose debug prints
+//
+// Send commands from Serial Monitor (115200) and watch logs.
 
 #include <Arduino.h>
 
@@ -27,7 +30,7 @@ constexpr uint8_t MOTOR_PIN_L_DIR = 28;
 constexpr uint8_t MOTOR_PIN_L_STEP = 26;
 constexpr uint8_t MOTOR_PIN_L_ENABLE = 24;
 
-constexpr uint16_t STEP_90 = 800u;
+constexpr uint16_t STEP_90 = 800u; // pulses for 90°
 enum GradeMove : uint8_t { G1 = 1u, G2 = 2u, G3 = 3u, G4 = 4u };
 
 // microsecond delay for half-step (smaller => faster)
@@ -35,11 +38,11 @@ constexpr uint16_t STEP_DELAY_US = 65u;
 // small settling time after finishing pulses (ms)
 constexpr uint16_t SETTLE_MS = 100u;
 // delay between enabling and disabling (ms)
-constexpr uint16_t WAIT_TIME_MS = 100u;
+constexpr uint16_t WAIT_TIME_MS = 20u;
 
-constexpr size_t LINE_BUF = 512;
+constexpr uint16_t LINE_BUF = 1024;
 char lineBuffer[LINE_BUF];
-size_t lineIndex = 0;
+uint16_t lineIndex = 0;
 
 struct Motor {
   uint8_t dirPin;
@@ -50,14 +53,22 @@ struct Motor {
     pinMode(dirPin, OUTPUT);
     pinMode(stepPin, OUTPUT);
     pinMode(enablePin, OUTPUT);
-    digitalWrite(enablePin, HIGH); // disable driver (A4988/DRV active LOW)
+    digitalWrite(enablePin, HIGH); // disable driver (active LOW)
+    digitalWrite(stepPin, LOW);
+    digitalWrite(dirPin, LOW);
   }
 
-  void move(bool dir, uint32_t steps) const {
-    digitalWrite(dirPin, dir);
-    digitalWrite(enablePin, LOW); // enable (active LOW)
+  void enable(bool on) const {
+    digitalWrite(enablePin, on ? LOW : HIGH);
+  }
 
-    for (uint32_t i = 0u; i < steps; ++i) {
+  // Move with optional holdEnable to avoid toggling enable for macros
+  void move(bool dir, enum GradeMove grade, bool holdEnable = false) const {
+    digitalWrite(dirPin, dir ? HIGH : LOW);
+    if (!holdEnable) digitalWrite(enablePin, LOW); // enable active-low
+
+    uint16_t pulses = grade * STEP_90;    
+    for (uint16_t i = 0u; i < pulses; ++i) {
       digitalWrite(stepPin, HIGH);
       delayMicroseconds(STEP_DELAY_US);
       digitalWrite(stepPin, LOW);
@@ -65,8 +76,8 @@ struct Motor {
     }
 
     delay(SETTLE_MS);
-    digitalWrite(enablePin, HIGH); // disable
-    delay(WAIT_TIME_MS);
+    if (!holdEnable) digitalWrite(enablePin, HIGH); // disable
+    if (!holdEnable) delay(WAIT_TIME_MS);
   }
 };
 
@@ -87,81 +98,95 @@ Motor* faceToMotor(char face) {
   }
 }
 
-/* U replacement:
-   U  -> L R B2 F2 L' R'  D  L R B2 F2 L' R'
-   U' -> same but D'
-   U2 -> same but D2
-   The function expects dir (true=positive, false=negative) and
-   step_mult: 0 -> 90°, 1 -> 180° (keeps your original mapping)
+void enable_all() {
+  faceToMotor('L')->enable(true);
+  faceToMotor('R')->enable(true);
+  faceToMotor('F')->enable(true);
+  faceToMotor('D')->enable(true);
+  faceToMotor('B')->enable(true);
+}
+void disable_all() {
+  faceToMotor('L')->enable(false);
+  faceToMotor('R')->enable(false);
+  faceToMotor('F')->enable(false);
+  faceToMotor('D')->enable(false);
+  faceToMotor('B')->enable(false);
+}
+
+/* U replacement macro: perform the equivalent sequence keeping enable pins held.
+   dir: true = positive, false = negative
+   step_mult: 1 => 90°, 2 => 180°.
 */
-void move_motor_u(bool dir, uint8_t step_mult) {
+void move_motor_u(bool dir, enum GradeMove grade) {
   Motor* l = faceToMotor('L');
   Motor* r = faceToMotor('R');
   Motor* f = faceToMotor('F');
   Motor* d = faceToMotor('D');
   Motor* b = faceToMotor('B');
 
-  l->move(dir, (uint32_t)G1 * STEP_90);
-  r->move(dir, (uint32_t)G1 * STEP_90);
-  b->move(dir, (uint32_t)G2 * STEP_90);
-  f->move(dir, (uint32_t)G2 * STEP_90);
-  l->move(!dir, (uint32_t)G1 * STEP_90);
-  r->move(!dir, (uint32_t)G1 * STEP_90);
+  //enable_all();
+  //delay(5);
 
-  d->move(dir, (uint32_t)step_mult * STEP_90);
+  l->move(dir, G1);
+  r->move(dir, G1);
+  b->move(dir, G2);
+  f->move(dir, G2);
 
-  l->move(dir, (uint32_t)G1 * STEP_90);
-  r->move(dir, (uint32_t)G1 * STEP_90);
-  b->move(dir, (uint32_t)G2 * STEP_90);
-  f->move(dir, (uint32_t)G2 * STEP_90);
-  l->move(!dir, (uint32_t)G1 * STEP_90);
-  r->move(!dir, (uint32_t)G1 * STEP_90);
+  l->move(!dir, G1);
+  r->move(!dir, G1);
+
+  d->move(dir, grade);
+
+  l->move(dir, G1);
+  r->move(dir, G1);
+  b->move(dir, G2);
+  f->move(dir, G2);
+
+  l->move(!dir, G1);
+  r->move(!dir, G1);
+
+  // Pequeño settle y luego desactivar drivers
+  //delay(SETTLE_MS);
+  //disable_all();
+  //delay(WAIT_TIME_MS);
 }
 
 void process_line(const char* line) {
-  size_t len = lineIndex;
+  uint16_t len = strlen(line);
   if (len == 0) return;
-  
-  Serial.print(len);
-  Serial.print(": ");
-  Serial.println(line);
 
-  // Test command -> T\n
   if (line[0] == 'T') {
-    /* Motors positions : 
-      Back(white) Left(red) Down(green) Right(orange) Front(yellow) 
-    */
     Motor* motors[5] = { &M_D, &M_F, &M_B, &M_L, &M_R };
-    for (uint8_t i = 0; i < 5; ++i) {
-      motors[i]->move(true, (uint32_t)G4 * STEP_90);   // forward
-      motors[i]->move(false, (uint32_t)G4 * STEP_90);  // back
+    for (auto& m : motors) {
+      m->move(true, G4);
+      m->move(false, G4);
     }
     Serial.println("OK");
     return;
   }
 
-  size_t s = 0;
-  while (s < len) {
-    while (s < len && line[s] == ' ') ++s;
-    if (s >= len) break;
+  uint16_t i = 0;
+  while (i < len) {
+    while (i < len && line[i] == ' ') i++;
+    if (i >= len) break;
 
-    char face = line[s++];
+    char face = line[i++];
+    char mod = '\0';
+    if (i < len && (line[i] == '\'' || line[i] == '2')) {
+      mod = line[i++];
+    }
 
-    if (s >= len || line[s] == ' ') {
-      Motor* m = faceToMotor(face);
-      if( face == 'U') move_motor_u(true,1);
-      else m->move(true, (uint32_t)G1 * STEP_90);
+    if (face == 'U') {
+      bool dir = (mod != '\''); // ' => inverse
+      GradeMove g = (mod == '2') ? G2 : G1;
+      move_motor_u(dir, g);
       continue;
     }
 
-    char mod = line[s++];
-    if (face == 'U') {
-      move_motor_u( (mod == '\'') , ((mod == '2') ? 2 : 1));
-    } else {
-      Motor* m = faceToMotor(face);
-      uint16_t stepss = (mod == '2') ? G2 : G1;
-      m->move((mod != '\''), STEP_90 * stepss);
-    }
+    Motor* m = faceToMotor(face);
+    bool dir = (mod != '\'');
+    GradeMove g = (mod == '2') ? G2 : G1;
+    m->move(dir, g);
   }
 
   Serial.println("OK");
@@ -174,8 +199,10 @@ void setup() {
 }
 
 void manual_test(){ 
-  lineBuffer[0] = 'U';
-  lineIndex = 1;
+  // Example test: execute sample sequence
+  const char *test = "R R R R L2 L2 D' D' D' D' F2 F' F' B2 B2 U2 U' U U'\n";
+  strncpy(lineBuffer, test, LINE_BUF-1);
+  lineBuffer[LINE_BUF-1] = '\0';
   process_line(lineBuffer);
 }
 
@@ -188,13 +215,7 @@ void loop() {
       process_line(lineBuffer);
       lineIndex = 0;
     } else {
-      if (lineIndex < (LINE_BUF - 1)) {
-        lineBuffer[lineIndex++] = c;
-      } else {
-        // overflow
-        lineIndex = 0;
-        Serial.println("ERR input overflow");
-      }
+      lineBuffer[lineIndex++] = c;
     }
   }
 }

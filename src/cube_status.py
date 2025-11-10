@@ -31,19 +31,15 @@ class CubeStatus:
 
 
     def detect(self):
-        print("=== STEP 1: Defining positions for both images ===")
         self.pos1, self.pos2 = self.sync_detector.define_positions_both()
         if not  self.pos1 or not self.pos2:
             raise Exception("Failed to get positions for both images")
 
-        print("\n=== STEP 2: Detecting colors in parallel ===")
         def job1():
             self.det1, self.labs1 = self.detector.detect_single_image(IMG1_PATH, self.pos1)
-            print("✓ Image 1 colors detected")
 
         def job2():
             self.det2, self.labs2 = self.detector.detect_single_image(IMG2_PATH, self.pos2)
-            print("✓ Image 2 colors detected")
 
         t1 = threading.Thread(target=job1)
         t2 = threading.Thread(target=job2)
@@ -217,7 +213,6 @@ class CubeStatus:
 
         self.have_sol = False
         facelet_str = self.cube_state.face_status
-        print("moves : "+ ("".join(moves)))
         print("facelet init : "+ facelet_str)
         try:
             fc = kociemba_mod.FaceCube(facelet_str)

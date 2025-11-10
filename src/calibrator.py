@@ -489,7 +489,6 @@ class CalibrationManager:
         self.calibration_data: Optional[Dict] = None
 
     def run_calibration(self) -> bool:
-        """Run the complete calibration process"""
         print("=== CUBE COLOR CALIBRATION ===")
         print("This process will calibrate the color detection system.")
         print("You will need to position markers on 6 color stickers (3 per image).")

@@ -292,13 +292,13 @@ class MotorController:
         self._simulation_mode = False
 
     def _write_line(self, line: str) -> None:
-        payload = (line.rstrip() + "\n").encode("utf-8")
+        payload = (line + "\n").encode("utf-8")
         if self._simulation_mode or self.ser is None:
-            logger.debug("[SIM WRITE] %s", line.strip())
+            logger.debug("[SIM WRITE] %s", line)
             return
         self.ser.write(payload)
         self.ser.flush()
-        logger.debug("[WRITE] %s", line.strip())
+        logger.debug("[WRITE] %s", line)
 
     def send_sequence(self, sequence: str) -> bool:
         """
@@ -307,12 +307,11 @@ class MotorController:
         extra_timeout: safety margin added to total timeout
         """
         print(sequence)
-        seq = sequence.strip()
-        if seq == "":
+        if sequence == "":
             logger.warning("Empty sequence")
             return True
         try:
-            self._write_line(seq)
+            self._write_line(sequence)
         except Exception:
             return False
 
