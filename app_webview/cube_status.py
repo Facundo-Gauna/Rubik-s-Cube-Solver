@@ -2,78 +2,25 @@ import threading
 from typing import Counter, Optional, Tuple, Dict, List
 
 import kociemba
-try:
-    import kociemba_module as kociemba_mod
-except Exception:
-    kociemba_mod = None
+import kociemba_module as kociemba_mod
 
-from config import CENTER_INDICES, FACE_ORDER, FACE_ORDER_IMG_1, FACE_ORDER_IMG_2, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, CubeState, DetectionResult
-from detector import EXPECTED_COLORS, ColorDetector, ParallelCubeDetector, SynchronizedColorCorrectionUI, SynchronizedPolygonDetector, rotate_block_list, build_color_net_text, brute_force_face_orientations
 
+from config import CENTER_INDICES, FACE_ORDER, CubeState
+from detector import  brute_force_face_orientations
+
+EXPECTED_COLORS = ['R','O','Y','G','B','W']
 
 class CubeStatus:
     def __init__(self):
         self.cube_state = CubeState()
-        self.cube_detector = ParallelCubeDetector()
-        self.sync_detector = SynchronizedPolygonDetector()
-        self.detector = ColorDetector()
-
-        self.pos1 = None
-        self.pos2 = None
-        self.det1 = None
-        self.det2 = None
-        self.labs1 = None
-        self.labs2 = None
-        self.corrected1 = None
-        self.corrected2 = None
-        
         self.have_sol : bool = False
 
-
-    def detect(self):
-        self.pos1, self.pos2 = self.sync_detector.define_positions_both()
-        if not  self.pos1 or not self.pos2:
-            raise Exception("Failed to get positions for both images")
-
-        def job1():
-            self.det1, self.labs1 = self.detector.detect_single_image(IMG1_PATH, self.pos1)
-
-        def job2():
-            self.det2, self.labs2 = self.detector.detect_single_image(IMG2_PATH, self.pos2)
-
-        t1 = threading.Thread(target=job1)
-        t2 = threading.Thread(target=job2)
-        t1.start(); t2.start()
-        t1.join(); t2.join()
-        
-        print("✓ Both image colors detected successfully!")
-        
-        print("\n=== STEP 3: Color Correction for both images ===")
-        if not (self.pos1 and self.det1 and self.labs1 and self.pos2 and self.det2 and self.labs2):
-            raise Exception("Must run detection before color correction")
-
-        sync_correction = SynchronizedColorCorrectionUI(
-            self.pos1, self.pos2,
-            self.det1, self.labs1,
-            self.det2, self.labs2
-        )
-
-        self.corrected1, corrected_labs1, self.corrected2, corrected_labs2 = sync_correction.run_both()
-        print("✓ Both image colors corrected successfully!")
-
-
-    def build_facelets_and_solve(self):
+    def build_facelets_and_solve(self, mapping : dict[str,str] ):
         """
         Build the canonical 54-color string and facelet string using corrected mappings.
         First image contains U,F,L (provided in this file), second contains D,R,B.
         The canonical face order needed by kociemba is U,R,F,D,L,B.
         """
-        if not (self.corrected1 and self.corrected2):
-            raise Exception("Run color correction first")
-
-        mapping = {}
-        mapping.update(self.corrected1 or {})
-        mapping.update(self.corrected2 or {})
 
         # Build color_str in U,R,F,D,L,B order
         colors = []
@@ -90,7 +37,6 @@ class CubeStatus:
             raise ValueError(f"Missing stickers: {missing}")
         color_str = ''.join(colors)
         print("Built color string:", color_str)
-        print(build_color_net_text(color_str))
 
         # Quick counts
         ctr = Counter(color_str)
@@ -132,28 +78,6 @@ class CubeStatus:
             print("kociemba not available; returning facelets for inspection")
             return color_str, facelet_str, None
 
-
-    def detect_status(self) -> DetectionResult:
-        try:
-            self.detect()
-            color_str, facelet,sol = self.build_facelets_and_solve()
-            self.have_sol = sol != None 
-            return DetectionResult(
-                color_str=color_str,
-                solution_str=sol,
-                face_str=facelet,
-                has_errors= sol != None,
-            )
-        except Exception as e:
-            print(f"Detection failed: {e}")
-            return DetectionResult(
-                color_str='',
-                solution_str='',
-                face_str='',
-                has_errors=True,
-            )
-
-
     def solve(self) -> Tuple[bool,str]:
         if self.have_sol:
             return True,"Solved"
@@ -170,23 +94,6 @@ class CubeStatus:
                 return True,"Solved"
             self.have_sol = False
             return False,"Solver rejected the facelet string and brute-force failed."
-
-    def update_sticker(self, side: str, sticker_pos: str, color: str):
-        try:
-            face_index = FACE_ORDER.index(side)
-            sticker_num = int(sticker_pos[1:]) - 1
-            status_index = face_index * 9 + sticker_num
-            
-            status_list = list(self.cube_state.color_status)
-            status_list[status_index] = color
-            self.cube_state.colors_status_set(''.join(status_list))
-            
-            self.have_sol = False # if a cube state suffer a change and it had a solution to make, it is delted
-            
-            print(f"Updated {side}{sticker_pos} to {color}")
-            
-        except (ValueError, IndexError) as e:
-            raise ValueError(f"Invalid sticker position: {side}{sticker_pos}") from e
 
 
     def validate_state(self) -> Tuple[bool, str]:
@@ -205,14 +112,13 @@ class CubeStatus:
 
         return False,"Unexpected...."
 
-    # --------- Manual changer of status ----------
-
-    def change_status(self, moves: List[str]):
-        if not moves:
+    def change_status(self, seq: str):
+        if not seq:
             return 
 
         self.have_sol = False
         facelet_str = self.cube_state.face_status
+        moves = seq.split(" ")
         print("facelet init : "+ facelet_str)
         try:
             fc = kociemba_mod.FaceCube(facelet_str)

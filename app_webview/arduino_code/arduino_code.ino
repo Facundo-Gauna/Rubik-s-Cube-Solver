@@ -126,24 +126,45 @@ void move_motor_u(bool dir, enum GradeMove grade) {
 
   //enable_all();
   //delay(5);
-
+  // U: L R B2 F2 L' R' 
   l->move(dir, G1);
+  Serial.println("OK");
+
   r->move(dir, G1);
+  Serial.println("OK");
+
   b->move(dir, G2);
+  Serial.println("OK");
+
   f->move(dir, G2);
+  Serial.println("OK");
 
   l->move(!dir, G1);
+  Serial.println("OK");
+
   r->move(!dir, G1);
+  Serial.println("OK");
 
   d->move(dir, grade);
+  Serial.println("OK");
 
   l->move(dir, G1);
+  Serial.println("OK");
+
   r->move(dir, G1);
+  Serial.println("OK");
+
   b->move(dir, G2);
+  Serial.println("OK");
+
   f->move(dir, G2);
+  Serial.println("OK");
 
   l->move(!dir, G1);
+  Serial.println("OK");
+
   r->move(!dir, G1);
+  Serial.println("OK");
 
   // Pequeño settle y luego desactivar drivers
   //delay(SETTLE_MS);

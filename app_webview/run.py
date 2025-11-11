@@ -19,7 +19,7 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize, QPoint
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QFont, QPen, QKeySequence
 
 from calibrator import CalibrationManager
-from config import CAMERA_RESOLUTION, COLOR_INIT_STATE, COPYRIGHT_MARK, DARK_THEME, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, THUMBNAIL_RESOLUTION, DetectionResult
+from config import CAMERA_RESOLUTION, COLOR_INIT_STATE, COPYRIGHT_MARK, DARK_THEME, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, THUMBNAIL_RESOLUTION, DetectionResult, init_const
 from cube_status import CubeStatus
 from control import MotorController
 
@@ -137,7 +137,8 @@ def draw_fallback_preview(img: np.ndarray, sccui, window_index: int) -> np.ndarr
             continue
     return disp
 
-# ---------------- PolygonDetectorWidget ----------------
+# --------------- Detection UI ----------------
+
 class PolygonDetectorWidget(QWidget):
     def __init__(self, faces_for_image: List[str], save_file: Path, image_path: Path, preferred_size: QSize, parent=None):
         super().__init__(parent)
@@ -265,7 +266,6 @@ class PolygonDetectorWidget(QWidget):
     def get_positions(self):
         return {str(k): tuple(v) for k, v in self.detector.positions.items()}
 
-# ---------------- ColorCorrectionWidget ----------------
 class ColorCorrectionWidget(QWidget):
     def __init__(self, sccui: SynchronizedColorCorrectionUI, window_index: int, preferred_size: QSize, parent=None):
         super().__init__(parent)
@@ -463,7 +463,6 @@ class ColorCorrectionWidget(QWidget):
             logger.error(f"_apply_color_to_key failed: {e}")
             QMessageBox.critical(self, 'Error', f"Failed to apply color: {e}")
 
-# ---------------- Workers ----------------
 class ColorDetectWorker(QThread):
     finished = pyqtSignal(object)
     error = pyqtSignal(str)
@@ -486,7 +485,6 @@ class ColorDetectWorker(QThread):
         except Exception as e:
             self.error.emit(str(e))
 
-# ---------------- Dialog flow ----------------
 class CombinedDetectionDialog(QDialog):
     def __init__(self, parent: QWidget, cube_status: CubeStatus):
         super().__init__(parent)
@@ -1011,7 +1009,8 @@ class MainWindow(QMainWindow):
         self.is_processing = False
         self.prime_mode = False
         self.new_positions = False
-
+        
+        init_const()
         self._setup_ui()
         self._connect_signals()
         self._initialize_camera()
@@ -1073,8 +1072,8 @@ class MainWindow(QMainWindow):
         t_layout = QHBoxLayout(thumb_group)
         self.thumb1 = ThumbnailWidget()
         self.thumb2 = ThumbnailWidget()
-        t_layout.addWidget(self._make_thumb_column("Image 1", self.thumb1, "Centers: Blue, Red, Yellow"))
-        t_layout.addWidget(self._make_thumb_column("Image 2", self.thumb2, "Centers: Green, Orange, White"))
+        t_layout.addWidget(self._make_thumb_column("Photo_1", self.thumb1, "Centers: Blue, Red, Yellow"))
+        t_layout.addWidget(self._make_thumb_column("Photo_2", self.thumb2, "Centers: Green, Orange, White"))
         lower_row.addWidget(thumb_group, stretch=1)
 
         tabs = QTabWidget()
@@ -1123,9 +1122,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(root)
         self.statusBar().showMessage("Ready — Press Space to capture images")
 
-    # ... (UI helper methods: _make_thumb_column, _create_* groups, signal connections, camera init)
-    # For brevity those methods are identical to the previous runUi.py implementation; we include them below.
-
     def _make_thumb_column(self, title: str, widget: ThumbnailWidget, info: str) -> QWidget:
         box = QWidget()
         layout = QVBoxLayout(box)
@@ -1142,11 +1138,9 @@ class MainWindow(QMainWindow):
         g = QGroupBox("Cube Detection")
         l = QVBoxLayout(g)
 
-        # New: Open interactive detection panel (polygon editors + color corrector)
         self.open_det_panel_btn = QPushButton("Open Detections Panel")
         self.open_det_panel_btn.clicked.connect(self._open_detections_panel)
         self.open_det_panel_btn.setToolTip("Open interactive polygon editors and color corrector")
-        #self.open_det_panel_btn.setObjectName('primary')
         l.addWidget(self.open_det_panel_btn)
 
         self.calibrator_btn = QPushButton("Calibrate Colors")
@@ -1290,7 +1284,6 @@ class MainWindow(QMainWindow):
             self.hardware_status.setText("Hardware: Disconnected (Simulation)")
             self.hardware_status.setStyleSheet("padding:6px; background:#333300; color:#fffb8f;")
 
-    # ---------------- camera & capture ----------------
     def _update_camera_display(self):
         frame = self.camera_controller.capture_frame()
         if frame is not None:
@@ -1318,7 +1311,6 @@ class MainWindow(QMainWindow):
             self.update_status_signal.emit("Image 2 captured. Click 'Detect Cube State' to process.")
             self.captured_images_count = 0
 
-    # ---------------- detection & solving ----------------
     def _detect_cube_state(self):
         if not IMG1_PATH.exists() or not IMG2_PATH.exists():
             self._show_warning("Images Required", "Capture both images (press Space twice) before detecting.")
@@ -1334,11 +1326,8 @@ class MainWindow(QMainWindow):
         dlg = CombinedDetectionDialog(self, self.cube_status)
         res = dlg.exec_()
         if res == QDialog.Accepted:
-            # After user finished interactive flow, update thumbnails/cube state
             try:
-                # If build_facelets_and_solve already ran inside correction, update cube_state
                 if hasattr(self.cube_status, 'corrected1') and self.cube_status.corrected1:
-                    # Rebuild facelets (cube_status.build_facelets_and_solve did validation already)
                     try:
                         color_str, facelet, sol = self.cube_status.build_facelets_and_solve()
                         self.cube_status.cube_state.color_status = color_str or self.cube_status.cube_state.color_status
@@ -1597,7 +1586,6 @@ class MainWindow(QMainWindow):
             pass
         event.accept()
 
-# ---------------- main ----------------
 def main():
     app = QApplication(sys.argv)
     app.setStyle('Fusion')

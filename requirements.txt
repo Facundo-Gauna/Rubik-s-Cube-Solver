@@ -17,3 +17,4 @@ numpy==1.23.5
 dill==0.3.6
 cloudpickle==2.2.1
 pyqt5
+webview

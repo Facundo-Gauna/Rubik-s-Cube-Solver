@@ -226,6 +226,7 @@ class MotorController:
         self.timeout = timeout
         self.auto_detect = auto_detect
         self.per_move_time = per_move_time
+        self.ack_per_move = True
 
         self.ser: Optional[serial.Serial] = None
         self._simulation_mode = False
@@ -300,23 +301,57 @@ class MotorController:
         self.ser.flush()
         logger.debug("[WRITE] %s", line)
 
-    def send_sequence(self, sequence: str) -> bool:
-        """
-        Send a full sequence line and wait for OK.
-        timeout_per_token: optional override of per token estimate (seconds)
-        extra_timeout: safety margin added to total timeout
-        """
-        print(sequence)
-        if sequence == "":
-            logger.warning("Empty sequence")
+    def _wait_for_ok(self, timeout: float) -> bool:
+        if self._simulation_mode or self.ser is None:
+            time.sleep(min(timeout, 0.1))
             return True
+        deadline = time.time() + timeout
+        buf = b""
         try:
-            self._write_line(sequence)
-        except Exception:
+            self.ser.timeout = 0.1
+            while time.time() < deadline:
+                chunk = self.ser.read(128)
+                if chunk:
+                    buf += chunk
+                    try:
+                        text = buf.decode(errors="ignore")
+                    except Exception:
+                        text = ""
+                    if "OK" in text.upper():
+                        logger.debug("Received OK from Arduino: %s", text.strip())
+                        return True
+                else:
+                    # no data, short sleep
+                    time.sleep(0.02)
+            logger.warning("Timeout esperando OK (%.2fs). Buffer: %s", timeout, buf[:200])
+            return False
+        except Exception as e:
+            logger.exception("Error leyendo serial: %s", e)
             return False
 
-        return True
-
+    def send_sequence(self, sequence: str, extra_timeout: float = 0.5) -> bool:
+        moves = sequence.split(" ")
+        if self.ack_per_move:
+            for mv in moves:
+                try:
+                    self._write_line(mv)
+                except Exception:
+                    logger.exception("Failed writing move: %s", mv)
+                    return False
+                timeout = max(0.2, self.per_move_time + extra_timeout)
+                ok = self._wait_for_ok(timeout)
+                if not ok:
+                    logger.warning("No OK for move %s", mv)
+                    return False
+            return True
+        else:
+            try:
+                self._write_line(" ".join(moves))
+            except Exception:
+                logger.exception("Failed writing full sequence")
+                return False
+            return True
+    
     def scramble(self, num_moves: int) -> List[str]:
         import random
         moves = []

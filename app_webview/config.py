@@ -38,22 +38,18 @@ class CubeState:
         self.face_status =  FACES_INIT_STATE
         self.solution = ''
 
-def init_const():
-    PICTURES_DIR.mkdir(exist_ok=True)
 
 CAMERA_RESOLUTION: Tuple[int, int] = (1980, 1080)
 THUMBNAIL_RESOLUTION: Tuple[int, int] = (160, 90)
 
 BASE_DIR: Path = Path(__file__).parent
-PICTURES_DIR: Path = BASE_DIR / "pictures"
+PICTURES_DIR: Path = BASE_DIR / "templates/pictures"
 
-IMG1_PATH : Path = PICTURES_DIR / "detector1.png"
-IMG2_PATH : Path = PICTURES_DIR / "detector2.png"
-POLYGON_POSITIONS_PATH_1 : Path = BASE_DIR / "positions1.json"
-POLYGON_POSITIONS_PATH_2 : Path = BASE_DIR / "positions2.json"
-CALIBRATIONS_PATH : Path = BASE_DIR / "calibrations.json"
-
-# Cube Consts
+IMG1_PATH : Path = PICTURES_DIR / "image1.png"
+IMG2_PATH : Path = PICTURES_DIR / "image2.png"
+POLYGON_POSITIONS_PATH_1 : Path = BASE_DIR / "positions/positions1.json"
+POLYGON_POSITIONS_PATH_2 : Path = BASE_DIR / "positions/positions2.json"
+CALIBRATIONS_PATH : Path = BASE_DIR / "positions/calibrations.json"
 
 CENTER_INDICES: Dict[str,int] ={ 'U': 4, 'R': 13, 'F': 22, 'D': 31, 'L': 40, 'B': 49}
 
@@ -66,66 +62,13 @@ COLOR_TO_FACE: Dict[str,str] ={'B':'U', 'O':'R', 'Y':'F', 'G':'D', 'R':'L', 'W':
 
 CENTER_LABELS : List[str] = ['U5','R5','F5','D5','L5','B5']
 
-# face groupings per image: user specified "photo1 = U,F,L ; photo2 = D,R,B"
 FACE_ORDER_IMG_1 : List[str ]=  ['U','F','L']
 FACE_ORDER_IMG_2 : List[str] =  ['D','R','B']
 
-
-# Threading settings
 THREAD_TIMEOUT : float = 10.0
 KEY_WAIT_TIME : int = 10
 
-# Theme
-DARK_THEME: str = """
-    QMainWindow, QWidget, QDialog {
-        background-color: #2b2b2b;
-        color: #ffffff;
-    }
-    QGroupBox {
-        color: #ffffff;
-        font-weight: bold;
-        border: 2px solid #555555;
-        border-radius: 5px;
-        margin-top: 1ex;
-        padding-top: 10px;
-    }
-    QGroupBox::title {
-        subcontrol-origin: margin;
-        left: 10px;
-        padding: 0 5px 0 5px;
-        color: #ffffff;
-    }
-    QPushButton {
-        background-color: #404040;
-        color: #ffffff;
-        border: 1px solid #555555;
-        border-radius: 3px;
-        padding: 5px 10px;
-        font-weight: bold;
-        min-height: 20px;
-    }
-    QPushButton:hover {
-        background-color: #505050;
-        border: 1px solid #666666;
-    }
-    QPushButton:pressed {
-        background-color: #606060;
-    }
-    QPushButton:disabled {
-        background-color: #333333;
-        color: #777777;
-    }
-    QLabel {
-        color: #ffffff;
-    }
-    QStatusBar {
-        background-color: #2b2b2b;
-        color: #ffffff;
-    }
-"""
-
 COPYRIGHT_MARK: str = "@Creators: Facundo and Ulises"
-
 
 class ThreadSyncManager:
     """Manages threading synchronization for parallel operations"""

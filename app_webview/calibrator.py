@@ -8,11 +8,6 @@ import numpy as np
 
 from config import CALIBRATIONS_PATH, IMG1_PATH, IMG2_PATH, ThreadSyncManager
 
-# =============================================================================
-# CALIBRATION CONFIGURATION
-# =============================================================================
-
-# Window settings
 WINDOW_TITLE_PREFIX = "Cube Calibration"
 CIRCLE_RADIUS = 15
 SELECTED_CIRCLE_RADIUS = 20
@@ -22,7 +17,6 @@ BORDER_COLOR = (0, 0, 0)
 TEXT_COLOR = (255, 255, 255)
 HIGHLIGHT_COLOR = (255, 255, 0)
     
-# Color settings
 COLOR_MAP_BGR = {
     'R': (0, 0, 255),
     'O': (0, 165, 255), 
@@ -32,21 +26,13 @@ COLOR_MAP_BGR = {
     'W': (255, 255, 255)
 }
     
-# Detection settings
 ROI_SIZE = 30  # Size of region to sample around each point
 MIN_SAMPLES = 5  # Minimum samples for robust color calculation
     
-# Threading settings
 THREAD_TIMEOUT = 10.0
 KEY_WAIT_TIME = 10
     
-# Default HSV ranges (will be updated during calibration)
-
 COLOR_ORDER_TO_CALIBRATE: List[str] = ['B','R','Y','G','O','W']
-
-# =============================================================================
-# CALIBRATION DETECTOR
-# =============================================================================
 
 class CalibrationDetector:
     """
@@ -288,13 +274,6 @@ class SynchronizedCalibration:
         # Wait for both windows to be created
         self.sync_manager.windows_ready.wait(timeout=THREAD_TIMEOUT)
         
-        print("\n=== BOTH CALIBRATION WINDOWS ARE READY ===")
-        print("Instructions:")
-        print("- Drag colored circles to center of corresponding color stickers")
-        print("- Ensure each circle is centered on a clean, well-lit sticker")
-        print("- Press ENTER in EITHER window when BOTH are ready")
-        print("- Both windows close when ENTER is pressed in either one\n")
-        
         # Wait for finish request
         self.sync_manager.ready_to_finish.wait()
         
@@ -302,17 +281,14 @@ class SynchronizedCalibration:
         with self.sync_manager.lock:
             self.sync_manager.finish_requested = True
         
-        # Wait for threads to complete
         thread1.join()
         thread2.join()
         
         if self.sync_manager.exception:
             raise self.sync_manager.exception
         
-        # Combine and save calibration data
         combined_data = self._combine_and_save_calibration()
         
-        print("✓ Calibration completed successfully!")
         return combined_data
 
     def _calibrate_image(self, image_num: int):
@@ -331,7 +307,6 @@ class SynchronizedCalibration:
                 positions_attr = "positions2"
                 window_suffix = "Image 2"
 
-            # Create calibration detector
             detector = CalibrationDetector(colors, self.calibration_file, image_path)
             detector.setup_image()
             
@@ -339,7 +314,6 @@ class SynchronizedCalibration:
             cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
             cv2.setMouseCallback(window_name, detector._mouse_callback)
             
-            # Signal that window is ready
             with self.sync_manager.lock:
                 if hasattr(self, '_window_ready_count'):
                     self.sync_manager.windows_ready.set()
@@ -348,7 +322,6 @@ class SynchronizedCalibration:
             
             print(f"Calibration Window {image_num} ready: {window_name}")
             
-            # Main event loop
             while True:
                 display = detector._draw_interface()
                 cv2.imshow(window_name, display)
@@ -367,7 +340,6 @@ class SynchronizedCalibration:
                     self._handle_escape_key(window_suffix)
                     break
                 elif key == ord('r'):
-                    # Reset to default positions
                     default_positions = detector._create_default_positions(detector.img.shape)
                     detector.positions = default_positions.copy()
             
@@ -384,21 +356,16 @@ class SynchronizedCalibration:
             self.sync_manager.ready_to_finish.set()
 
     def _handle_enter_key(self, window_suffix: str):
-        """Handle ENTER key press"""
-        print(f"ENTER pressed in {window_suffix} Calibration - finishing both...")
         with self.sync_manager.lock:
             if not self.sync_manager.finish_requested:
                 self.sync_manager.finish_requested = True
                 self.sync_manager.ready_to_finish.set()
 
     def _handle_escape_key(self, window_suffix: str):
-        """Handle ESC key press"""
-        print(f"ESC pressed in {window_suffix} Calibration - cancelling both...")
         self.sync_manager.exception = Exception("User cancelled calibration")
         self.sync_manager.ready_to_finish.set()
 
     def _combine_and_save_calibration(self) -> Dict[str, Dict]:
-        """Combine calibration data from both images and save to file"""
         if not self.calibration_data1 or not self.calibration_data2:
             raise Exception("Calibration data incomplete")
         
@@ -463,7 +430,6 @@ class SynchronizedCalibration:
         return hsv_ranges
 
     def _save_calibration_data(self, calibration_data: Dict):
-        """Save calibration data to JSON file"""
         try:
             with open(self.calibration_file, 'w') as f:
                 json.dump(calibration_data, f, indent=2)
@@ -473,7 +439,6 @@ class SynchronizedCalibration:
             raise
 
     def _get_timestamp(self) -> str:
-        """Get current timestamp for calibration metadata"""
         from datetime import datetime
         return datetime.now().isoformat()
 
@@ -489,22 +454,15 @@ class CalibrationManager:
         self.calibration_data: Optional[Dict] = None
 
     def run_calibration(self) -> bool:
-        print("=== CUBE COLOR CALIBRATION ===")
-        print("This process will calibrate the color detection system.")
-        print("You will need to position markers on 6 color stickers (3 per image).")
-        print("Make sure each sticker is clean and well-lit.\n")
-        
         try:
             parallel_calibrator = SynchronizedCalibration()
             self.calibration_data = parallel_calibrator.calibrate_both()
             
             self._print_calibration_summary()
             
-            print("\n=== CALIBRATION COMPLETE ===")
             return True
             
         except Exception as e:
-            print(f"\n=== CALIBRATION FAILED: {e} ===")
             return False
 
     def _print_calibration_summary(self):
@@ -523,7 +481,6 @@ class CalibrationManager:
         print(f"\nCalibration data saved to: {self.calibration_file}")
 
 def load_calibration() -> Optional[Dict]:
-    """Load existing calibration data from file"""
     try:
         if CALIBRATIONS_PATH.exists():
             with open(CALIBRATIONS_PATH, 'r') as f:

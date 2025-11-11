@@ -42,21 +42,21 @@ function initRubik3D(container) {
   });
 
   const ColoresBaseHex = {
-    Blanco: 0xffffff,
-    Amarillo: 0xffff00,
-    Rojo: 0xff0000,
-    Naranja: 0xff6600,
-    Azul: 0x0000ff,
-    Verde: 0x00aa00,
+    W: 0xffffff,
+    Y: 0xffff00,
+    R: 0xff0000,
+    O: 0xff6600,
+    B: 0x0000ff,
+    G: 0x00aa00,
   };
 
   const ColoresBase = {
-    Blanco: plasticSticker(0xffffff),
-    Amarillo: plasticSticker(0xffff00),
-    Rojo: plasticSticker(0xff0000),
-    Naranja: plasticSticker(0xff6600),
-    Azul: plasticSticker(0x0000ff),
-    Verde: plasticSticker(0x00aa00),
+    W: plasticSticker(0xffffff),
+    Y: plasticSticker(0xffff00),
+    R: plasticSticker(0xff0000),
+    O: plasticSticker(0xff6600),
+    B: plasticSticker(0x0000ff),
+    G: plasticSticker(0x00aa00),
   };
 
   const blackPlastic = new THREE.MeshPhysicalMaterial({
@@ -91,12 +91,12 @@ function initRubik3D(container) {
         const base = new THREE.Mesh(baseGeo, blackPlastic);
         base.position.set(x*STEP, y*STEP, z*STEP);
 
-        if (y === 1) { const s = makeSticker(ColoresBase.Blanco, 'U'); s.rotation.x=-Math.PI/2; s.position.y=0.485; base.add(s);}
-        if (y === -1){ const s = makeSticker(ColoresBase.Amarillo, 'D'); s.rotation.x=Math.PI/2; s.position.y=-0.485; base.add(s);}
-        if (z === 1) { const s = makeSticker(ColoresBase.Rojo, 'F'); s.position.z=0.485; base.add(s);}
-        if (z === -1){ const s = makeSticker(ColoresBase.Naranja, 'B'); s.rotation.y=Math.PI; s.position.z=-0.485; base.add(s);}
-        if (x === 1) { const s = makeSticker(ColoresBase.Azul, 'R'); s.rotation.y=Math.PI/2; s.position.x=0.485; base.add(s);}
-        if (x === -1){ const s = makeSticker(ColoresBase.Verde, 'L'); s.rotation.y=-Math.PI/2; s.position.x=-0.485; base.add(s);}
+        if (y === 1) { const s = makeSticker(ColoresBase.B, 'U'); s.rotation.x=-Math.PI/2; s.position.y=0.485; base.add(s);}
+        if (y === -1){ const s = makeSticker(ColoresBase.G , 'D'); s.rotation.x=Math.PI/2; s.position.y=-0.485; base.add(s);}
+        if (z === 1) { const s = makeSticker(ColoresBase.R, 'F'); s.position.z=0.485; base.add(s);}
+        if (z === -1){ const s = makeSticker(ColoresBase.O, 'B'); s.rotation.y=Math.PI; s.position.z=-0.485; base.add(s);}
+        if (x === 1) { const s = makeSticker(ColoresBase.Y, 'R'); s.rotation.y=Math.PI/2; s.position.x=0.485; base.add(s);}
+        if (x === -1){ const s = makeSticker(ColoresBase.W, 'L'); s.rotation.y=-Math.PI/2; s.position.x=-0.485; base.add(s);}
 
 
         scene.add(base);
@@ -223,20 +223,11 @@ function initRubik3D(container) {
   window.addEventListener('keydown', e => {
     if (busy) return;
 
-    let notation = '';
-    switch (e.key.toUpperCase()) {
-        case 'U': notation = 'U'; break;
-        case 'D': notation = 'D'; break;
-        case 'L': notation = 'L'; break;
-        case 'R': notation = 'R'; break;
-        case 'F': notation = 'F'; break;
-        case 'B': notation = 'B'; break;
-    }
+    let notation = e.key.toUpperCase();
 
     if (notation) {
-        // Si se mantiene Shift, hacemos el movimiento invertido
         if (e.shiftKey) notation += "'";
-        RotarCara(notation); // Ejecuta el movimiento usando la secuencia
+        RotarCara(notation);
     }
   });
 
