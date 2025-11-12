@@ -2,7 +2,7 @@ const panelTitle = document.getElementById("panel-title");
 const panelContent = document.getElementById("panel-content");
 panelContent.innerHTML = "";
 
-document.getElementById("settings-btn").addEventListener("click", showSettingsView);
+document.getElementById("settings-btn").addEventListener("click", rubik.ResetearCubo);
 
 function showSettingsView() {
     panelTitle.textContent = "Ajustes";

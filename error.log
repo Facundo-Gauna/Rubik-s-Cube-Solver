@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "c:\Users\facun\OneDrive\Documentos\dev\Proyect_cube\Cube-Solver-Arduino-main\Cube-Solver-Arduino-main\app_webview\main.py", line 6, in <module>
-    webview.settings.use_edge = True
-AttributeError: module 'webview' has no attribute 'settings'

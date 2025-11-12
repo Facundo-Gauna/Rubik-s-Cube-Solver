@@ -326,86 +326,30 @@ async function saveColorsClick() {
     });
     console.log("Detected face centers (from lettersMap):", faceCenters);
 
-    // Tu convención deseada: Y:F , W:B , R:L , O:R , G:D , B:U
-    // Es conveniente representarla como color -> face (Kociemba)
-    const desiredFaceByColor = {
-      'Y': 'F',
-      'W': 'B',
-      'R': 'L',
-      'O': 'R',
-      'G': 'D',
-      'B': 'U'
-    };
+    // --- Corrección: intercambiar caras R y B ---
+    const tempR = {};
+    const tempB = {};
 
-    // Queremos la inversa: face -> color esperada
-    const expectedCenterColorByFace = {};
-    for (const [color, face] of Object.entries(desiredFaceByColor)) {
-      expectedCenterColorByFace[face] = color;
-    }
-    console.log("Expected centers by face (desired convention):", expectedCenterColorByFace);
-
-    // Detectar si hay un swap consistente entre dos colores.
-    // Buscamos pares (a,b) tal que center(faceX) == b pero expected is a, y center(faceY)==a but expected is b.
-    function detect_two_color_swap(faceCenters, expectedCenters) {
-      const mismatches = [];
-      for (const f of ['U','R','F','D','L','B']) {
-        const actual = faceCenters[f];
-        const expected = expectedCenters[f];
-        if (actual !== expected) mismatches.push({face: f, actual, expected});
-      }
-      if (mismatches.length === 0) return null;
-      // buscar si todos los mismatches se reducen a un intercambio de dos colores
-      const actualSet = new Set(mismatches.map(m => m.actual));
-      const expectedSet = new Set(mismatches.map(m => m.expected));
-      if (actualSet.size === 1 && expectedSet.size === 1) {
-        // ejemplo: actualSet={'R'} expectedSet={'B'} => eso no es swap, es asignación global
-        return null;
-      }
-      // candidate swap colors: union of actuals and expected (should be 2 colors)
-      const union = new Set([...actualSet, ...expectedSet]);
-      if (union.size !== 2) return null;
-      const arr = Array.from(union);
-      return {a: arr[0], b: arr[1]};
+    for (let i = 1; i <= 9; i++) {
+      tempR[`R${i}`] = lettersMap[`R${i}`];
+      tempB[`B${i}`] = lettersMap[`B${i}`];
     }
 
-    const swap = detect_two_color_swap(faceCenters, expectedCenterColorByFace);
-    if (swap) {
-      console.log("Detected candidate two-color swap:", swap);
-      // Verificar que swap explica todos los mismatches:
-      let explainsAll = true;
-      for (const f of ['U','R','F','D','L','B']) {
-        const actual = faceCenters[f];
-        const expected = expectedCenterColorByFace[f];
-        const swappedExpected = (expected === swap.a ? swap.b : (expected === swap.b ? swap.a : expected));
-        if (actual !== expected && actual !== swappedExpected) {
-          explainsAll = false; break;
-        }
-      }
-      if (explainsAll) {
-        console.log("Swap explains mismatches; applying swap to lettersMap:", swap);
-        // aplicar swap en todo lettersMap: a <-> b
-        const newMap = {};
-        for (const k of Object.keys(lettersMap)) {
-          const v = lettersMap[k];
-          if (v === swap.a) newMap[k] = swap.b;
-          else if (v === swap.b) newMap[k] = swap.a;
-          else newMap[k] = v;
-        }
-        // sustituir
-        for (const k of Object.keys(newMap)) lettersMap[k] = newMap[k];
-        // recomputar centers y log
-        const afterCenters = {};
-        ['U','R','F','D','L','B'].forEach(f => { afterCenters[f] = lettersMap[`${f}5`]; });
-        console.log("Centers after swap correction:", afterCenters);
-      } else {
-        console.log("Detected swap doesn't explain all mismatches; not auto-applying.");
-      }
-    } else {
-      console.log("No simple two-color swap detected.");
+    // Swap
+    for (let i = 1; i <= 9; i++) {
+      lettersMap[`R${i}`] = tempB[`B${i}`];
+      lettersMap[`B${i}`] = tempR[`R${i}`];
     }
+    console.log("✅ Intercambio aplicado: caras R y B corregidas.");
 
-    // --- FIN VALIDACIONES / correcciones locales ---
-    // enviar sanitized lettersMap al backend
+    // --- Corrección: intercambiar colores W y O ---
+    for (const k in lettersMap) {
+      if (lettersMap[k] === "W") lettersMap[k] = "O";
+      else if (lettersMap[k] === "O") lettersMap[k] = "W";
+    }
+    console.log("✅ Intercambio aplicado: colores W ↔ O corregidos.");
+
+
     const val = await window.pywebview.api.validate_cube_state(lettersMap);
 
     if (!val || !val.ok) {
@@ -414,9 +358,17 @@ async function saveColorsClick() {
       return false;
     }
 
-    // resto de tu código existente (aplicar solution / pintar 3D)
-    solution = Array.isArray(val.solution) ? val.solution.join(" ") : (val.solution || "");
-    // ... (aplicar colores 3D como ya lo haces)
+    solution = val.solution;
+    
+    const moves = solution.trim().split(/\s+/).reverse();
+
+    const inverso = moves.map(move => {
+      if (move.endsWith("2")) return move; // giros dobles son su propio inverso
+      else if (move.endsWith("'")) return move.slice(0, -1); // U' → U
+      else return move + "'"; // U → U'
+    }).join(' ');
+
+    rubik.SecuenciaInstantanea(inverso);
 
     EscaneoCompleto();
     return true;
@@ -475,7 +427,7 @@ async function validatePointColors() {
         lettersMap[key] = (pointElements[idx][key].color || "W").toUpperCase().charAt(0);
       }
     }
-    console.log(">>> DEBUG final lettersMap about to send (sample 24):", Object.fromEntries(Object.keys(lettersMap).slice(0,24).map(k => [k, lettersMap[k]])));
+   // console.log(">>> DEBUG final lettersMap about to send (sample 24):", Object.fromEntries(Object.keys(lettersMap).slice(0,24).map(k => [k, lettersMap[k]])));
 
     const res = await window.pywebview.api.validate_cube_state(lettersMap);
     if (!res || !res.ok) {
@@ -523,6 +475,7 @@ document.getElementById("solve-btn").addEventListener("click", async () => {
       await rubik.RotarCara(move);
     }
     console.log("Solve sequence completed");
+    solution = ""
   } catch (e) {
     console.error("Error during solve sequence:", e);
     alert("Error al ejecutar solución: " + (e.message || e));
@@ -619,6 +572,7 @@ function enableColorMode() {
     btn._handler = () => {
       buttons.forEach(b => b.classList.remove("selected"));
       btn.classList.add("selected");
+      console.log("Color elegido : ", btn.dataset.color);
       selectedColor = btn.dataset.color;
     };
     btn.addEventListener("click", btn._handler);

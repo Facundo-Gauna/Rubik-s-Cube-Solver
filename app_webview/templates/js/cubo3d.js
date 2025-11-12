@@ -91,19 +91,30 @@ function initRubik3D(container) {
         const base = new THREE.Mesh(baseGeo, blackPlastic);
         base.position.set(x*STEP, y*STEP, z*STEP);
 
+        // 🔹 Guardar posición y rotación inicial
+        base.userData.initialPosition = base.position.clone();
+        base.userData.initialRotation = base.rotation.clone();
+
         if (y === 1) { const s = makeSticker(ColoresBase.B, 'U'); s.rotation.x=-Math.PI/2; s.position.y=0.485; base.add(s);}
         if (y === -1){ const s = makeSticker(ColoresBase.G , 'D'); s.rotation.x=Math.PI/2; s.position.y=-0.485; base.add(s);}
-        if (z === 1) { const s = makeSticker(ColoresBase.R, 'F'); s.position.z=0.485; base.add(s);}
-        if (z === -1){ const s = makeSticker(ColoresBase.O, 'B'); s.rotation.y=Math.PI; s.position.z=-0.485; base.add(s);}
-        if (x === 1) { const s = makeSticker(ColoresBase.Y, 'R'); s.rotation.y=Math.PI/2; s.position.x=0.485; base.add(s);}
-        if (x === -1){ const s = makeSticker(ColoresBase.W, 'L'); s.rotation.y=-Math.PI/2; s.position.x=-0.485; base.add(s);}
+        if (z === 1) { const s = makeSticker(ColoresBase.Y, 'F'); s.position.z=0.485; base.add(s);}
+        if (z === -1){ const s = makeSticker(ColoresBase.W, 'B'); s.rotation.y=Math.PI; s.position.z=-0.485; base.add(s);}
+        if (x === 1) { const s = makeSticker(ColoresBase.O, 'R'); s.rotation.y=Math.PI/2; s.position.x=0.485; base.add(s);}
+        if (x === -1){ const s = makeSticker(ColoresBase.R, 'L'); s.rotation.y=-Math.PI/2; s.position.x=-0.485; base.add(s);}
 
         scene.add(base);
         cubelets.push(base);
       }
     }
   }
-  const ORDEN = [ 18,16,13,31,30,28,51,49,46, 19,32,52,11,27,44,6,25,39, 15,17,20,9,10,12,2,4,7, 33,36,38,21,23,24,0,3,5, 40,37,35,45,43,42,53,50,48, 34,22,1,41,26,8,47,29,14 ];
+
+  const ORDEN = [
+        18,16,13,31,30,28,51,49,46,
+        19,32,52,11,27,44,6,25,39,
+        15,17,20,9,10,12,2,4,7,
+        33,36,38,21,23,24,0,3,5,
+        40,37,35,45,43,42,53,50,48,
+        34,22,1,41,26,8,47,29,14 ];
   
   const faceNormals = {
     U: new THREE.Vector3(0, 1, 0),
@@ -303,6 +314,7 @@ function initRubik3D(container) {
     window.addEventListener('keydown', handleKeyDown);
   }
 
+  
   async function SecuenciaDeGiros(sequenceStr) {
     if (sequenceRunning) return;
     sequenceRunning = true;
@@ -328,6 +340,66 @@ function initRubik3D(container) {
 
     await nextMove();
   }
+  
+
+  async function SecuenciaInstantanea(sequenceStr) {
+    // No usar busy ni API ni animaciones
+    const moves = sequenceStr.trim().split(/\s+/);
+
+    const map = {
+      "D": { axis: "y", index: -1, dir: 1 },
+      "D'": { axis: "y", index: -1, dir: -1 },
+      "D2": { axis: "y", index: -1, dir: 2 },
+      "F": { axis: "z", index: 1, dir: -1 },
+      "F'": { axis: "z", index: 1, dir: 1 },
+      "F2": { axis: "z", index: 1, dir: 2 },
+      "B": { axis: "z", index: -1, dir: 1 },
+      "B'": { axis: "z", index: -1, dir: -1 },
+      "B2": { axis: "z", index: -1, dir: 2 },
+      "R": { axis: "x", index: 1, dir: -1 },
+      "R'": { axis: "x", index: 1, dir: 1 },
+      "R2": { axis: "x", index: 1, dir: 2 },
+      "L": { axis: "x", index: -1, dir: 1 },
+      "L'": { axis: "x", index: -1, dir: -1 },
+      "L2": { axis: "x", index: -1, dir: 2 },
+      "U": { axis: "y", index: 1, dir: -1 },
+      "U'": { axis: "y", index: 1, dir: 1 },
+      "U2": { axis: "y", index: 1, dir: 2 },
+    };
+
+    for (const notation of moves) {
+      const move = map[notation];
+      if (!move) continue;
+
+      const { axis, index, dir } = move;
+
+      // Crear grupo temporal para rotar instantáneamente
+      const group = new THREE.Group();
+      scene.add(group);
+
+      cubelets.forEach(c => {
+        if (Math.round(c.position[axis] / STEP) === index) group.attach(c);
+      });
+
+      // Aplicar rotación directa (sin animación)
+      const angle = dir === 2 ? Math.PI : dir * Math.PI / 2;
+      group.rotation[axis] += angle;
+
+      // Actualizar posiciones y desprender los cubies del grupo
+      const hijos = [...group.children];
+      hijos.forEach(ch => {
+        ch.updateMatrixWorld(true);
+        scene.attach(ch);
+        ch.position.x = Math.round(ch.position.x / STEP) * STEP;
+        ch.position.y = Math.round(ch.position.y / STEP) * STEP;
+        ch.position.z = Math.round(ch.position.z / STEP) * STEP;
+      });
+
+      scene.remove(group);
+    }
+
+    renderer.render(scene, camera);
+  }
 
   // ---------- Cambiar colores ----------
   function CambiarColorSticker(id, colorHex){
@@ -350,14 +422,43 @@ function initRubik3D(container) {
         const stickerId = ORDEN[index];
         CambiarColorSticker(stickerId, colorHex);
     });
+    ResetearCubo();
   }
 
-  function applyColorStrTo3D(colorStr) {
-    if (!colorStr || typeof colorStr !== 'string' || colorStr.length !== 54) {
-      console.error("applyColorStrTo3D: invalid colorStr", colorStr);
+  function ResetearCubo() {
+  busy = true;
+  sequenceRunning = false;
+
+  cubelets.forEach(c => {
+    // Restaurar posición y rotación
+    c.position.copy(c.userData.initialPosition);
+    c.rotation.copy(c.userData.initialRotation);
+    c.updateMatrixWorld(true);
+  });
+
+  busy = false;
+  }
+
+  function applyFacesTo3D(faces) {
+    console.log("Faces str : ",faces)
+    const FACE_ORDER = {'U':'B','F':'Y','L':'R','D':'G','R':'O','B':'W'};
+
+    const listaFromColorStr = new Array(54);
+    for (let i = 0; i < 54; i++) {
+      const F = faces[i].toUpperCase();
+      listaFromColorStr[i] = ColoresBaseHex[FACE_ORDER[F]] ?? 0xffffff;
+    }
+    try {
+      CambiarColoresDelCubo(listaFromColorStr);
+      return true;
+    } catch (e) {
+      console.error("applyColorStrTo3D -> CambiarColoresDelCubo failed:", e);
       return false;
     }
-
+  }
+  function applyColorStrTo3D(colorStr) {
+    console.log("Color str : ",colorStr)
+    
     const desiredFaceLetter = {
       U: 'B', 
       R: 'O',
@@ -369,14 +470,14 @@ function initRubik3D(container) {
 
     // índices centrales en el orden Kociemba (caras U,R,F,D,L,B)
     const centerIndices = [4, 13, 22, 31, 40, 49];
-    const FACE_ORDER = ['U','R','F','D','L','B'];
+    const FACE_ORDER = ['U','F','L','D','R','B'];
 
     // 1) Inferir qué letra usa el backend para cada cara, mirando los centros
     const translation = {}; // backendLetter -> desiredLetter
     for (let k = 0; k < FACE_ORDER.length; k++) {
       const face = FACE_ORDER[k];
       const idx = centerIndices[k];
-      const backendLetter = colorStr.charAt(idx).toUpperCase();
+      const backendLetter = colorStr[idx].toUpperCase();
       translation[backendLetter] = desiredFaceLetter[face];
     }
 
@@ -411,6 +512,8 @@ function initRubik3D(container) {
   }
 
 
+  
+
   function getFaceStartIndex(face){
     switch(face){
       case 'U': return 0;
@@ -430,6 +533,9 @@ function initRubik3D(container) {
     RotarCara,
     SecuenciaDeGiros,
     applyColorStrTo3D,
+    applyFacesTo3D,
+    ResetearCubo,
+    SecuenciaInstantanea,
     // debug: inspecciona en consola para verificar mapeo
     _debug: {
       ORDEN,

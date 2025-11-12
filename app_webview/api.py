@@ -23,9 +23,9 @@ POLYGON_POSITIONS_PATH_2 = POSITIONS_DIR / "positions2.json"
 CAMERA_RESOLUTION = (1920, 1080)
 COLOR_INIT_STATE = {}
 
+from config import CALIBRATIONS_PATH
 from detector import ColorDetector  
 from cube_status import CubeStatus
-from calibrator import CalibrationManager
 from control import MotorController
 
 class CameraController:
@@ -103,7 +103,7 @@ class API:
         self.camera = CameraController()
         self.cube_status = CubeStatus()
         self.motor_controller = MotorController()
-        self.calibrator = CalibrationManager()
+        self.detector = ColorDetector(calib_path=CALIBRATIONS_PATH)
 
         self.running = True
         self.lock = threading.Lock()
@@ -113,11 +113,6 @@ class API:
         self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
 
         self.motor_controller.connect()
-
-        try:
-            self.detector = ColorDetector()
-        except Exception:
-            self.detector = None
 
         try:
             self.camera.initialize()
@@ -219,62 +214,6 @@ class API:
         except Exception:
             return {}
 
-    def _fast_detect(self, image_path: Path, positions: Dict[str, Tuple[int, int]]) -> Tuple[Dict[str,str], Dict[str, Tuple[int,int,int]]]:
-        img = cv2.imread(str(image_path))
-        if img is None:
-            raise FileNotFoundError(f"Cannot open image: {image_path}")
-
-        h_img, w_img = img.shape[:2]
-        roi_size = max(14, min(28, int(min(w_img, h_img) * 0.02)))  # adaptive small ROI
-        half = roi_size // 2
-
-        center_hsv = {
-            'R': (0, 160, 150),
-            'O': (12, 170, 200),
-            'Y': (28, 200, 200),
-            'G': (60, 160, 140),
-            'B': (110, 160, 120),
-            'W': (0, 20, 230)
-        }
-
-        detected = {}
-        labs = {}
-        for label, pos in positions.items():
-            try:
-                x, y = int(pos[0]), int(pos[1])
-            except Exception:
-                detected[label] = 'W'
-                labs[label] = (0,0,0)
-                continue
-            x = max(0, min(w_img-1, x))
-            y = max(0, min(h_img-1, y))
-            x0, x1 = max(0, x-half), min(w_img, x+half)
-            y0, y1 = max(0, y-half), min(h_img, y+half)
-            roi = img[y0:y1, x0:x1]
-            if roi is None or roi.size == 0:
-                detected[label] = 'W'
-                labs[label] = (0,0,0)
-                continue
-
-            # median color filter: robust and fast
-            med_bgr = np.median(roi.reshape(-1,3), axis=0).astype(np.uint8)
-            hsv = cv2.cvtColor(np.uint8([[med_bgr]]), cv2.COLOR_BGR2HSV)[0][0]
-            lab = cv2.cvtColor(np.uint8([[med_bgr]]), cv2.COLOR_BGR2LAB)[0][0]
-            H, S, V = int(hsv[0]), int(hsv[1]), int(hsv[2])
-            labs[label] = (int(lab[0]), int(lab[1]), int(lab[2]))
-
-            # match to nearest center with simple weighted distance (circular hue)
-            best, bestd = 'W', 999.0
-            for k, (ch, cs, cvv) in center_hsv.items():
-                dh = min(abs(H - ch), 180 - abs(H - ch)) / 90.0  # normalized
-                ds = abs(S - cs) / 255.0
-                dv = abs(V - cvv) / 255.0
-                d = dh * 0.6 + ds * 0.25 + dv * 0.15
-                if d < bestd:
-                    bestd = d
-                    best = k
-            detected[label] = best
-        return detected, labs
 
     def color_detector(self) -> Dict[str, Any]:
         try:
@@ -283,8 +222,8 @@ class API:
             if not pos1 or not pos2:
                 return {"ok": False, "error": "Positions files missing or empty (positions1.json/positions2.json)"}
 
-            det1, labs1 = self._fast_detect(IMG1_PATH, pos1)
-            det2, labs2 = self._fast_detect(IMG2_PATH, pos2)
+            det1,labs1= self.detector.detect_single_image(IMG1_PATH, pos1, use_gray_world=True)
+            det2,labs2= self.detector.detect_single_image(IMG2_PATH, pos2, use_gray_world=True)
 
             # DEBUG: print keys & per-face counts for each det
             def summarize(det):
@@ -316,13 +255,32 @@ class API:
 
             return {"ok": True, "colors": combined}
         except Exception as e:
-            ...
+            print("Error detecting : "+ e)
+            return {"ok":False,"colors":{}}
+
+
+    def calibrate_colors(self) -> bool:
+        try:
+            pos1 = self.load_points(0)
+            pos2 = self.load_points(1)
+            if not pos1 or not pos2:
+                return False
+            calibrations = self.detector.calibrate_from_positions(IMG1_PATH,pos1,IMG2_PATH,pos2)
+            print(calibrations)
+            return True
+        except Exception as e:
+            print("Error detecting : "+ e)
+            return False
+
 
     def scramble(self, moves: int = 20) -> List[str]:
         try:
-            return self.motor_controller.scramble(moves)
+            moves = self.motor_controller.scramble(moves)
+            print(" ".join(moves))
+            return moves
         except Exception:
             return []
+
 
     def send_sequence(self, seq: str) -> bool:
         try:
@@ -354,11 +312,13 @@ class API:
         except Exception:
             return []
 
+
     def switch_camera(self) -> bool:
         try:
             return bool(self.camera.switch_camera())
         except Exception:
             return False
+
 
     def validate_cube_state(self, face_to_color: dict = None) -> Dict[str, Any]:
         try:
@@ -371,10 +331,8 @@ class API:
 
             try:
                 print(face_to_color)
-                color_str, facelets, sol = self.cube_status.build_facelets_and_solve(face_to_color)
-                self.cube_status.cube_state.color_status = color_str
-                self.cube_status.cube_state.face_status = facelets
-                self.cube_status.cube_state.solution = sol
+                self.cube_status.solve_from_detect(face_to_color)
+                print("solution : "+self.cube_status.cube_state.solution)
             except Exception as e:
                 return {"ok": False, "error": f"build_facelets failed: {e}"}
 
@@ -385,49 +343,28 @@ class API:
                 return {
                     "ok": True,
                     "solution": self.cube_status.cube_state.solution,
-                    "color_str": getattr(self.cube_status.cube_state, "color_status", None),
-                    "facelets": getattr(self.cube_status.cube_state, "face_status", None),
+                    "color_str": self.cube_status.cube_state.color_status,
+                    "facelets":self.cube_status.cube_state.face_status,
                 }
             else:
                 self.cube_status.cube_state.solution = ""
                 return {
                     "ok": False,
                     "error": str(issue),
-                    "color_str": getattr(self.cube_status.cube_state, "color_status", None),
-                    "facelets": getattr(self.cube_status.cube_state, "face_status", None),
+                    "color_str": self.cube_status.cube_state.color_status,
+                    "facelets": self.cube_status.cube_state.face_status,
                 }
 
         except Exception as e:
             return {"ok": False, "error": str(e), "debug": {"exception": str(e)}}
 
 
-    def validate_cube_state2(self, face_to_color: dict = None) -> Dict[str, Any]:
-        if face_to_color == None:
-            ok,mens = self.cube_status.solve()
-            if ok:
-                return {"ok": True, "solution": self.cube_status.cube_state.solution}
-            return {"ok": False, "error": mens}
-        try:
-            try:
-                color_str, facelets, sol = self.cube_status.build_facelets_and_solve(face_to_color)
-                self.cube_status.cube_state.color_status = color_str
-                self.cube_status.cube_state.face_status = facelets
-                self.cube_status.cube_state.solution = sol
-            except Exception:
-                pass
-            valid, issue = self.cube_status.validate_state()
-            if valid:
-                return {"ok": True, "solution": self.cube_status.cube_state.solution}
-            else:
-                return {"ok": False, "error": issue}
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-
     def reset_cube_state(self):
         try:
             self.cube_status.cube_state.reset_state()
         except Exception:
             pass
+
 
     def shutdown(self):
         self.running = False

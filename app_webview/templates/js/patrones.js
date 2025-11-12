@@ -42,7 +42,7 @@ function showPatternsView() {
       img.style.boxShadow = "0 4px 16px rgba(76, 175, 80, 0.5)";
       img.style.transform = "scale(1.1)";
 
-      if (typeof rubik !== "undefined") rubik.SecuenciaDeGiros("D2 L2 R2 B2 F2");
+      if (typeof rubik !== "undefined") rubik.SecuenciaInstantanea("R2 F' D L B2 U' L2 F R' U2 B D' R U' L2 F2 D R' F' U L2 B2 U' R D2 F R' U2");
     });
 
     container.appendChild(img);
