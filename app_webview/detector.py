@@ -211,21 +211,13 @@ ROT90 = [6, 3, 0, 7, 4, 1, 8, 5, 2]
 
 
 def rotate_block_list(vals9: List, times: int) -> List:
-    """
-    Rota una lista de 9 elementos (una cara) 90 grados en sentido horario 'times' veces.
-    """
     out = list(vals9)
     for _ in range(times % 4):
-        # Aplica la permutación ROT90
         out = [out[i] for i in ROT90]
     return out
 
 
 def build_color_net_text(color_str: str) -> str:
-    """
-    Convierte una cadena de color de 54 caracteres en una representación de red (net) legible
-    con las caras separadas y mostradas como cuadrículas de 3x3.
-    """
     faces = ['U', 'R', 'F', 'D', 'L', 'B']
     out = []
     for fi, face in enumerate(faces):
@@ -238,37 +230,31 @@ def build_color_net_text(color_str: str) -> str:
 
 def brute_force_face_orientations(face_color_string: str):
     if kociemba is None:
+        print("kociemba not installed; cannot brute force.")
         return None, None
-
     blocks = [list(face_color_string[i * 9:(i + 1) * 9]) for i in range(6)]
-
+    import itertools
     t0 = time.time()
-    print("Fuerza bruta: probando todas las rotaciones de caras (4^6)...")
-
+    print("Brute-force: trying all face rotations (4^6)...")
     for comb in itertools.product(range(4), repeat=6):
         candidate_blocks = [''.join(rotate_block_list(b, comb[i])) for i, b in enumerate(blocks)]
         candidate_color_str = ''.join(candidate_blocks)
-
         color_to_face = {}
         ok = True
-        
         for face_letter, idx in CENTER_INDICES.items():
             c = candidate_color_str[idx]
             if c in color_to_face:
                 ok = False
                 break
             color_to_face[c] = face_letter
-
         if not ok:
             continue
         candidate_facelets = ''.join(color_to_face[c] for c in candidate_color_str)
-        
         try:
             sol = kociemba.solve(candidate_facelets)
-            print(f"Orientación válida encontrada (fuerza bruta) después de {time.time() - t0:.2f}s.")
+            print(f"Found valid orientation (brute-force) after {time.time() - t0:.2f}s.")
             return candidate_facelets, sol
         except Exception:
             continue
-
-    print("Fuerza bruta agotada; no se encontró ninguna orientación válida.")
+    print("Brute-force exhausted; no valid orientation found.")
     return None, None

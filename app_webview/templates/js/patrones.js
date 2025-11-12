@@ -42,7 +42,7 @@ function showPatternsView() {
       img.style.boxShadow = "0 4px 16px rgba(76, 175, 80, 0.5)";
       img.style.transform = "scale(1.1)";
 
-      if (typeof rubik !== "undefined") rubik.SecuenciaDeGiros("U2 D2 L2 R2 B2 F2");
+      if (typeof rubik !== "undefined") rubik.SecuenciaDeGiros("D2 L2 R2 B2 F2");
     });
 
     container.appendChild(img);

@@ -15,13 +15,7 @@ class CubeStatus:
         self.cube_state = CubeState()
         self.have_sol : bool = False
 
-    def build_facelets_and_solve(self, mapping : dict[str,str] ):
-        """
-        Build the canonical 54-color string and facelet string using corrected mappings.
-        First image contains U,F,L (provided in this file), second contains D,R,B.
-        The canonical face order needed by kociemba is U,R,F,D,L,B.
-        """
-
+    def build_facelets_and_solve(self, mapping : Dict[str,str]):
         # Build color_str in U,R,F,D,L,B order
         colors = []
         missing = []
@@ -77,6 +71,7 @@ class CubeStatus:
         else:
             print("kociemba not available; returning facelets for inspection")
             return color_str, facelet_str, None
+
 
     def solve(self) -> Tuple[bool,str]:
         if self.have_sol:

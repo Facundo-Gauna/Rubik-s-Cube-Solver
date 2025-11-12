@@ -19,7 +19,7 @@ from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QThread, QSize, QPoint
 from PyQt5.QtGui import QPixmap, QImage, QPainter, QColor, QFont, QPen, QKeySequence
 
 from calibrator import CalibrationManager
-from config import CAMERA_RESOLUTION, COLOR_INIT_STATE, COPYRIGHT_MARK, DARK_THEME, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, THUMBNAIL_RESOLUTION, DetectionResult, init_const
+from config import CAMERA_RESOLUTION, COLOR_INIT_STATE, COPYRIGHT_MARK, IMG1_PATH, IMG2_PATH, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, THUMBNAIL_RESOLUTION, DetectionResult, init_const
 from cube_status import CubeStatus
 from control import MotorController
 

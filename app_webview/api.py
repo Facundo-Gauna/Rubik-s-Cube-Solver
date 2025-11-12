@@ -9,8 +9,8 @@ from typing import Optional, Dict, Any, Tuple, List
 import cv2
 import numpy as np
 
-ROOT = Path.cwd()
-PICTURES_DIR = ROOT / "templates/pictures"
+ROOT = Path.cwd() / "app_webview"
+PICTURES_DIR  = ROOT / "templates/pictures"
 POSITIONS_DIR = ROOT / "positions"
 PICTURES_DIR.mkdir(parents=True, exist_ok=True)
 POSITIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -31,7 +31,7 @@ from control import MotorController
 class CameraController:
     def __init__(self):
         self.cap = None
-        self.current_camera_index = 0
+        self.current_camera_index = -1
         self.is_initialized = False
 
     def initialize(self) -> bool:
@@ -201,12 +201,15 @@ class API:
             POSITIONS_DIR.mkdir(parents=True, exist_ok=True)
             path = POSITIONS_DIR / filename
             data = json.loads(content)
+            # debug log
+            print(f"[API.save_json] saving {filename} keys_count={len(data.keys())} sample_keys={list(data.keys())[:12]}")
             with open(path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             return True
         except Exception as e:
             print(f"[API.save_json] Error: {e}")
             return False
+
 
     def load_points(self, idx: int) -> Dict[str, Any]:
         path = POLYGON_POSITIONS_PATH_1 if idx == 0 else POLYGON_POSITIONS_PATH_2
@@ -283,24 +286,37 @@ class API:
             det1, labs1 = self._fast_detect(IMG1_PATH, pos1)
             det2, labs2 = self._fast_detect(IMG2_PATH, pos2)
 
+            # DEBUG: print keys & per-face counts for each det
+            def summarize(det):
+                from collections import Counter
+                counts = Counter(det.values())
+                # also group by face prefix
+                per_face = {}
+                for k,v in det.items():
+                    face = k[0] if isinstance(k,str) and len(k)>0 else '?'
+                    per_face.setdefault(face, []).append((k,v))
+                per_face_summary = {face: Counter([v for (_,v) in arr]) for face,arr in per_face.items()}
+                return counts, per_face_summary
+
+            c1, pf1 = summarize(det1)
+            c2, pf2 = summarize(det2)
+            print("[API.color_detector] det1 counts:", c1, "per_face_summary:", pf1)
+            print("[API.color_detector] det2 counts:", c2, "per_face_summary:", pf2)
+            # Also log pos keys
+            print("[API.color_detector] pos1 keys:", list(pos1.keys())[:12], "pos2 keys:", list(pos2.keys())[:12])
+
             combined = {}
             combined.update(det1)
             combined.update(det2)
 
+            # DEBUG final combined summary
+            from collections import Counter
+            print("[API.color_detector] combined counts:", Counter(combined.values()))
+            print("[API.color_detector] combined sample keys:", list(combined.items())[:24])
+
             return {"ok": True, "colors": combined}
         except Exception as e:
-            try:
-                if self.detector:
-                    det1, labs1 = self.detector.detect_single_image(IMG1_PATH, pos1)
-                    det2, labs2 = self.detector.detect_single_image(IMG2_PATH, pos2)
-                    combined = {}
-                    combined.update(det1)
-                    combined.update(det2)
-                    return {"ok": True, "colors": combined}
-            except Exception:
-                pass
-            print("[color_detector] Exception:", e)
-            return {"ok": False, "error": str(e)}
+            ...
 
     def scramble(self, moves: int = 20) -> List[str]:
         try:
@@ -345,6 +361,47 @@ class API:
             return False
 
     def validate_cube_state(self, face_to_color: dict = None) -> Dict[str, Any]:
+        try:
+            if face_to_color is None:
+                ok, mens = self.cube_status.solve()
+                if ok:
+                    return {"ok": True, "solution": self.cube_status.cube_state.solution}
+                else:
+                    return {"ok": False, "error": mens}
+
+            try:
+                print(face_to_color)
+                color_str, facelets, sol = self.cube_status.build_facelets_and_solve(face_to_color)
+                self.cube_status.cube_state.color_status = color_str
+                self.cube_status.cube_state.face_status = facelets
+                self.cube_status.cube_state.solution = sol
+            except Exception as e:
+                return {"ok": False, "error": f"build_facelets failed: {e}"}
+
+            # Validate normalized face_status
+            valid, issue = self.cube_status.validate_state()
+
+            if valid:
+                return {
+                    "ok": True,
+                    "solution": self.cube_status.cube_state.solution,
+                    "color_str": getattr(self.cube_status.cube_state, "color_status", None),
+                    "facelets": getattr(self.cube_status.cube_state, "face_status", None),
+                }
+            else:
+                self.cube_status.cube_state.solution = ""
+                return {
+                    "ok": False,
+                    "error": str(issue),
+                    "color_str": getattr(self.cube_status.cube_state, "color_status", None),
+                    "facelets": getattr(self.cube_status.cube_state, "face_status", None),
+                }
+
+        except Exception as e:
+            return {"ok": False, "error": str(e), "debug": {"exception": str(e)}}
+
+
+    def validate_cube_state2(self, face_to_color: dict = None) -> Dict[str, Any]:
         if face_to_color == None:
             ok,mens = self.cube_status.solve()
             if ok:
