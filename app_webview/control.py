@@ -237,6 +237,8 @@ class MotorController:
         return self._connector.find_port()
 
     def connect(self) -> bool:
+        if not self._simulation_mode and self.port != None: 
+            return True
         if self.port is None and self.auto_detect:
             try:
                 self.port = self._find_port()

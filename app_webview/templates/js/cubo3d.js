@@ -1,7 +1,3 @@
-// cube3d.js
-// Inicializa el cubo 3D con funciones para pintar y rotar.
-// Cambios importantes: mapeo robusto Kociemba -> orden interno (stickerId).
-
 function initRubik3D(container) {
   // ---------- Escena ----------
   const scene = new THREE.Scene();
@@ -11,8 +7,10 @@ function initRubik3D(container) {
   const renderer = new THREE.WebGLRenderer({antialias:true});
   renderer.setSize(container.clientWidth, container.clientHeight);
   renderer.setPixelRatio(window.devicePixelRatio);
-  renderer.setClearColor(0xffffff, 1);
+  renderer.setClearColor(0x0d1117, 1); // fondo claro por defecto
   container.appendChild(renderer.domElement);
+
+  rubikRenderer = renderer; // 🔹 guardamos referencia global
 
   // ---------- Luces ----------
   scene.add(new THREE.AmbientLight(0xffffff, 0.35));
@@ -229,56 +227,145 @@ function initRubik3D(container) {
   // ---------- Rotaciones (idéntico a tu implementación) ----------
   let busy=false;
   let sequenceRunning = false;
-  const DURATION=400;
+  let DURATION=400;
   const easeOut=t=>1-Math.pow(1-t,3);
+  let clicked_list = [];
 
-  function handleKeyDown(e) {
-      if (busy || sequenceRunning) return;
-      let notation = e.key.toUpperCase();
-      if (!notation) return;
-      if (e.shiftKey) notation += "'";
-      RotarCara(notation);
+  function moveToAmount(move) {
+    const face = move.charAt(0);
+    const suffix = move.slice(1);
+    if (suffix === "2") return { face, amount: 2 };
+    if (suffix === "'") return { face, amount: 3 }; // 3 == -1 (270°)
+    return { face, amount: 1 };
   }
-  window.addEventListener('keydown', handleKeyDown);
 
-  async function RotarCara(notation) {
-    if(busy) return;
-    window.removeEventListener('keydown', handleKeyDown);
+  function amountToMove(face, amount) {
+    amount = ((amount % 4) + 4) % 4; // normaliza
+    if (amount === 0) return null;   // identidad (se anula)
+    if (amount === 1) return face;
+    if (amount === 2) return face + "2";
+    if (amount === 3) return face + "'";
+  }
+
+  function save_key_move(move) {
+    const { face: newFace, amount: newAmount } = moveToAmount(move);
+
+    if (clicked_list.length === 0) {
+      clicked_list.push(amountToMove(newFace, newAmount));
+      return;
+    }
+
+    // Mira el último guardado
+    const last = clicked_list[clicked_list.length - 1];
+    const { face: lastFace, amount: lastAmount } = moveToAmount(last);
+
+    if (lastFace !== newFace) {
+      // Diferente cara => guardar como nuevo elemento
+      clicked_list.push(amountToMove(newFace, newAmount));
+      return;
+    }
+
+    // Misma cara => combinamos cantidades (suma modular)
+    const combined = (lastAmount + newAmount) % 4;
+    if (combined === 0) {
+      // Se anulan
+      clicked_list.pop();
+    } else {
+      clicked_list[clicked_list.length - 1] = amountToMove(newFace, combined);
+    }
+  }
+  let rubik_keys_attached = false;
+
+  async function handleKeyDown(e) {
+    if (!rubik_keys_attached) return;
+    if (busy || sequenceRunning) return;
+    clicked_list.forEach(function(element) {
+      console.log("clicked : ",element);
+    });
+    DURATION = 500;
+
+    let notation = e.key.toUpperCase();
+    if (!notation) return;
+
+    // Solo permitir las teclas válidas
+    const validKeys = ["F", "B", "D", "R", "L", "U"];
+    if (!validKeys.includes(notation)) return;
+
+    // Si se mantiene Shift, se agrega el apóstrofe
+    if (e.shiftKey) notation += "'";
+
+    save_key_move(notation);
+
+    // Ejecuta la rotación / secuencia correspondiente
+    if (notation == "U") await SecuenciaDeGiros("L R B2 F2 L' R' D L R B2 F2 L' R'");
+    else if (notation == "U'") await SecuenciaDeGiros("L R B2 F2 L' R' D' L R B2 F2 L' R'");
+    else await RotarCara(notation);
+  }
+
+
+
+  function habilitar_desactivar_teclas(activar) {
+    if (activar) {
+      if (!rubik_keys_attached) {
+        window.addEventListener('keydown', handleKeyDown);
+        rubik_keys_attached = true;
+        console.log("[rubik] teclas manuales HABILITADAS");
+      }
+    } else {
+      if (rubik_keys_attached) {
+        window.removeEventListener('keydown', handleKeyDown);
+        rubik_keys_attached = false;
+        console.log("[rubik] teclas manuales DESHABILITADAS");
+      }
+    }
+  }
+
+
+  habilitar_desactivar_teclas(true);
+
+   async function RotarCara(notation) {
+    if (busy) return;
     busy = true;
+    console.log("rotating : ",notation);
 
-    if(notation == "U") { busy = false; await SecuenciaDeGiros("L R B2 F2 L' R' D L R B2 F2 L' R'");  window.addEventListener('keydown', handleKeyDown); return; }
-    else if(notation == "U'") { busy = false; await SecuenciaDeGiros("L' R' B2 F2 L R D' L' R' B2 F2 L R");  window.addEventListener('keydown', handleKeyDown); return; }
-    else if(notation == "U2") { busy = false; await SecuenciaDeGiros("L R B2 F2 L' R' D2 L R B2 F2 L' R'"); window.addEventListener('keydown', handleKeyDown); return; }
-
-    let backendPromise = window.pywebview.api.send_sequence(notation);
+    let backendPromise;
+    try {
+      backendPromise = window.pywebview.api.send_sequence(notation);
+    } catch (e) {
+      console.warn("pywebview API send_sequence error:", e);
+      backendPromise = Promise.resolve();
+    }
 
     const map = {
-        "D": { axis: "y", index: -1, dir: 1 },
-        "D'": { axis: "y", index: -1, dir: -1 },
-        "D2": { axis: "y", index: -1, dir: 2 },
-        "F": { axis: "z", index: 1, dir: -1 },
-        "F'": { axis: "z", index: 1, dir: 1 },
-        "F2": { axis: "z", index: 1, dir: 2 },
-        "B": { axis: "z", index: -1, dir: 1 },
-        "B'": { axis: "z", index: -1, dir: -1 },
-        "B2": { axis: "z", index: -1, dir: 2 },
-        "R": { axis: "x", index: 1, dir: -1 },
-        "R'": { axis: "x", index: 1, dir: 1 },
-        "R2": { axis: "x", index: 1, dir: 2 },
-        "L": { axis: "x", index: -1, dir: 1 },
-        "L'": { axis: "x", index: -1, dir: -1 },
-        "L2": { axis: "x", index: -1, dir: 2 },
+      "D": { axis: "y", index: -1, dir: 1 },
+      "D'": { axis: "y", index: -1, dir: -1 },
+      "D2": { axis: "y", index: -1, dir: 2 },
+      "F": { axis: "z", index: 1, dir: -1 },
+      "F'": { axis: "z", index: 1, dir: 1 },
+      "F2": { axis: "z", index: 1, dir: 2 },
+      "B": { axis: "z", index: -1, dir: 1 },
+      "B'": { axis: "z", index: -1, dir: -1 },
+      "B2": { axis: "z", index: -1, dir: 2 },
+      "R": { axis: "x", index: 1, dir: -1 },
+      "R'": { axis: "x", index: 1, dir: 1 },
+      "R2": { axis: "x", index: 1, dir: 2 },
+      "L": { axis: "x", index: -1, dir: 1 },
+      "L'": { axis: "x", index: -1, dir: -1 },
+      "L2": { axis: "x", index: -1, dir: 2 },
+      "U": { axis: "y", index: 1, dir: -1 },
+      "U'": { axis: "y", index: 1, dir: 1 },
+      "U2": { axis: "y", index: 1, dir: 2 },
     };
 
     const move = map[notation];
-    if (!move) { busy = false;  window.addEventListener('keydown', handleKeyDown); return; }
+    if (!move) { busy = false; return; }
 
     const { axis, index, dir } = move;
     const group = new THREE.Group();
     scene.add(group);
 
     cubelets.forEach(c => {
-        if (Math.round(c.position[axis] / STEP) === index) group.attach(c);
+      if (Math.round(c.position[axis] / STEP) === index) group.attach(c);
     });
 
     const start = group.rotation[axis];
@@ -287,65 +374,82 @@ function initRubik3D(container) {
 
     const animPromise = new Promise(resolve => {
       function anim(now) {
-          const t = Math.min(1, (now - t0) / DURATION);
-          group.rotation[axis] = start + (target - start) * easeOut(t);
-          renderer.render(scene, camera);
-          if (t < 1) requestAnimationFrame(anim);
-          else {
-              group.rotation[axis] = target;
-              const hijos = [...group.children];
-              hijos.forEach(ch => {
-                  ch.updateMatrixWorld(true);
-                  scene.attach(ch);
-                  ch.position.x = Math.round(ch.position.x / STEP) * STEP;
-                  ch.position.y = Math.round(ch.position.y / STEP) * STEP;
-                  ch.position.z = Math.round(ch.position.z / STEP) * STEP;
-              });
-              scene.remove(group);
-              busy = false;
-              window.addEventListener('keydown', handleKeyDown);
-              resolve();
-          }
+        const t = Math.min(1, (now - t0) / DURATION);
+        group.rotation[axis] = start + (target - start) * easeOut(t);
+        renderer.render(scene, camera);
+        if (t < 1) requestAnimationFrame(anim);
+        else {
+          // fijar rotación final exacta
+          group.rotation[axis] = target;
+          // forzar actualización y desprender hijos
+          const hijos = [...group.children];
+          hijos.forEach(ch => {
+            ch.updateMatrixWorld(true);
+            scene.attach(ch);
+            // normalizar posiciones
+            ch.position.x = Math.round(ch.position.x / STEP) * STEP;
+            ch.position.y = Math.round(ch.position.y / STEP) * STEP;
+            ch.position.z = Math.round(ch.position.z / STEP) * STEP;
+            // normalizar rotaciones a múltiplos de 90º
+            ch.rotation.x = Math.round(ch.rotation.x / (Math.PI/2)) * (Math.PI/2);
+            ch.rotation.y = Math.round(ch.rotation.y / (Math.PI/2)) * (Math.PI/2);
+            ch.rotation.z = Math.round(ch.rotation.z / (Math.PI/2)) * (Math.PI/2);
+            ch.updateMatrixWorld(true);
+          });
+          scene.remove(group);
+          busy = false;
+          resolve();
+        }
       }
       requestAnimationFrame(anim);
-  });
+    });
 
-    await Promise.all([backendPromise, animPromise]);
-    window.addEventListener('keydown', handleKeyDown);
+    // esperar backend y animación (backendPromise puede o no devolver promesa)
+    await Promise.all([Promise.resolve(backendPromise), animPromise]);
+
+
   }
 
-  
+
   async function SecuenciaDeGiros(sequenceStr) {
     if (sequenceRunning) return;
     sequenceRunning = true;
+    DURATION = 100;
     if (busy) { sequenceRunning = false; return; }
+    console.log(sequenceStr);
+    const moves = sequenceStr.trim().split(/\s+/).filter(x=>x);
 
-    const moves = sequenceStr.split(/\s+/);
-    let i = 0;
-
-    async function nextMove() {
-        if (i >= moves.length) {
-            sequenceRunning = false;
-            return;
-        }
-        await RotarCara(moves[i]);
-        const check = setInterval(() => {
-            if (!busy) {
-                clearInterval(check);
-                i++;
-                nextMove();
-            }
-        }, 20);
+    // helper para ejecutar una secuencia de moves (substituciones ya hechas)
+    async function ejecutarArrayDeMoves(arr) {
+      for (let mv of arr) {
+        await RotarCara(mv);
+        // espera a que termine (busy ya se maneja dentro de RotarCara)
+        while (busy) await new Promise(res => setTimeout(res, 10));
+      }
     }
 
-    await nextMove();
+    for (let move of moves) {
+      let secuenciaPersonalizada = null;
+      if (move === "U") secuenciaPersonalizada = "L R B2 F2 L' R' D L R B2 F2 L' R'";
+      else if (move === "U'") secuenciaPersonalizada = "L R B2 F2 L' R' D' L R B2 F2 L' R'";
+      else if (move === "U2") secuenciaPersonalizada = "L R B2 F2 L' R' D2 L R B2 F2 L' R'";
+
+      if (secuenciaPersonalizada) {
+        const sub = secuenciaPersonalizada.trim().split(/\s+/);
+        await ejecutarArrayDeMoves(sub);
+      } else {
+        await RotarCara(move);
+        while (busy) await new Promise(res => setTimeout(res, 10));
+      }
+    }
+
+    sequenceRunning = false;
   }
-  
+
 
   async function SecuenciaInstantanea(sequenceStr) {
     // No usar busy ni API ni animaciones
     const moves = sequenceStr.trim().split(/\s+/);
-
     const map = {
       "D": { axis: "y", index: -1, dir: 1 },
       "D'": { axis: "y", index: -1, dir: -1 },
@@ -426,122 +530,33 @@ function initRubik3D(container) {
   }
 
   function ResetearCubo() {
-  busy = true;
-  sequenceRunning = false;
+    busy = true;
+    sequenceRunning = false;
+    window.pywebview.api.reset_cube_state();
+    clicked_list.length = 0;
+    calibrated = false;
 
-  cubelets.forEach(c => {
-    // Restaurar posición y rotación
-    c.position.copy(c.userData.initialPosition);
-    c.rotation.copy(c.userData.initialRotation);
-    c.updateMatrixWorld(true);
-  });
-
-  busy = false;
-  }
-
-  function applyFacesTo3D(faces) {
-    console.log("Faces str : ",faces)
-    const FACE_ORDER = {'U':'B','F':'Y','L':'R','D':'G','R':'O','B':'W'};
-
-    const listaFromColorStr = new Array(54);
-    for (let i = 0; i < 54; i++) {
-      const F = faces[i].toUpperCase();
-      listaFromColorStr[i] = ColoresBaseHex[FACE_ORDER[F]] ?? 0xffffff;
-    }
-    try {
-      CambiarColoresDelCubo(listaFromColorStr);
-      return true;
-    } catch (e) {
-      console.error("applyColorStrTo3D -> CambiarColoresDelCubo failed:", e);
-      return false;
-    }
-  }
-  function applyColorStrTo3D(colorStr) {
-    console.log("Color str : ",colorStr)
-    
-    const desiredFaceLetter = {
-      U: 'B', 
-      R: 'O',
-      F: 'Y',
-      D: 'G',
-      L: 'R',
-      B: 'W'
-    };
-
-    // índices centrales en el orden Kociemba (caras U,R,F,D,L,B)
-    const centerIndices = [4, 13, 22, 31, 40, 49];
-    const FACE_ORDER = ['U','F','L','D','R','B'];
-
-    // 1) Inferir qué letra usa el backend para cada cara, mirando los centros
-    const translation = {}; // backendLetter -> desiredLetter
-    for (let k = 0; k < FACE_ORDER.length; k++) {
-      const face = FACE_ORDER[k];
-      const idx = centerIndices[k];
-      const backendLetter = colorStr[idx].toUpperCase();
-      translation[backendLetter] = desiredFaceLetter[face];
-    }
-
-    // debug rápido (opcional)
-    console.log("applyColorStrTo3D: inferred center translation:", translation);
-
-    // 2) Construir listaFromColorStr remapeando cada letra según translation
-    const listaFromColorStr = new Array(54);
-    for (let i = 0; i < 54; i++) {
-      const L = colorStr.charAt(i).toUpperCase();
-      const mapped = translation[L] || L; // si no está en translation, dejarla tal cual
-      listaFromColorStr[i] = ColoresBaseHex[mapped] ?? 0xffffff;
-    }
-
-    const coloresRemapped = new Array(54).fill(0xffffff);
-    for (let j = 0; j < 54; j++) {
-      const i = permutation[j];
-      if (i >= 0 && i < 54) {
-        coloresRemapped[j] = listaFromColorStr[i];
-      } else {
-        coloresRemapped[j] = 0xffffff;
-      }
-    }
-
-    try {
-      CambiarColoresDelCubo(coloresRemapped);
-      return true;
-    } catch (e) {
-      console.error("applyColorStrTo3D -> CambiarColoresDelCubo failed:", e);
-      return false;
-    }
-  }
-
-
-  
-
-  function getFaceStartIndex(face){
-    switch(face){
-      case 'U': return 0;
-      case 'D': return 9;
-      case 'F': return 18;
-      case 'B': return 27;
-      case 'R': return 36;
-      case 'L': return 45;
-    }
+      cubelets.forEach(c => {
+        // Restaurar posición y rotación
+        c.position.copy(c.userData.initialPosition);
+        c.rotation.copy(c.userData.initialRotation);
+        c.updateMatrixWorld(true);
+    });
+    habilitar_desactivar_teclas(true);
+    busy = false;
   }
 
   // ---------- Export API ----------
   const rubik = {
     cubelets,
+    clicked_list,
     CambiarColoresDelCubo,
     ColoresBaseHex,
     RotarCara,
     SecuenciaDeGiros,
-    applyColorStrTo3D,
-    applyFacesTo3D,
     ResetearCubo,
     SecuenciaInstantanea,
-    // debug: inspecciona en consola para verificar mapeo
-    _debug: {
-      ORDEN,
-      kociembaIDs,
-      permutation
-    },
+    habilitar_desactivar_teclas,
     get busy() { return busy; }
   };
 

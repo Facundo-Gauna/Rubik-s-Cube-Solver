@@ -1,37 +1,23 @@
-import os
 import time
 import json
 import base64
 import threading
 from pathlib import Path
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Optional, Dict, Any
 
 import cv2
 import numpy as np
+import webview
 
-ROOT = Path.cwd() / "app_webview"
-PICTURES_DIR  = ROOT / "templates/pictures"
-POSITIONS_DIR = ROOT / "positions"
-PICTURES_DIR.mkdir(parents=True, exist_ok=True)
-POSITIONS_DIR.mkdir(parents=True, exist_ok=True)
-
-IMG1_PATH = PICTURES_DIR / "image1.png"
-IMG2_PATH = PICTURES_DIR / "image2.png"
-COLORS_JSON = POSITIONS_DIR / "colors.json"
-POLYGON_POSITIONS_PATH_1 = POSITIONS_DIR / "positions1.json"
-POLYGON_POSITIONS_PATH_2 = POSITIONS_DIR / "positions2.json"
-CAMERA_RESOLUTION = (1920, 1080)
-COLOR_INIT_STATE = {}
-
-from config import CALIBRATIONS_PATH
+from config import CALIBRATIONS_PATH, CAMERA_RESOLUTION, IMG1_PATH, IMG2_PATH, OK_TIMEOUT, PICTURES_DIR, POLYGON_POSITIONS_PATH_1, POLYGON_POSITIONS_PATH_2, POSITIONS_DIR
 from detector import ColorDetector  
-from cube_status import CubeStatus
+from cube_solver import CubeSolver
 from control import MotorController
 
 class CameraController:
     def __init__(self):
         self.cap = None
-        self.current_camera_index = -1
+        self.current_camera_index = 0
         self.is_initialized = False
 
     def initialize(self) -> bool:
@@ -99,9 +85,10 @@ class CameraController:
 
 
 class API:
+
     def __init__(self):
         self.camera = CameraController()
-        self.cube_status = CubeStatus()
+        self.cube_solver = CubeSolver()
         self.motor_controller = MotorController()
         self.detector = ColorDetector(calib_path=CALIBRATIONS_PATH)
 
@@ -113,7 +100,8 @@ class API:
         self._capture_thread = threading.Thread(target=self._capture_loop, daemon=True)
 
         self.motor_controller.connect()
-
+        PICTURES_DIR.mkdir(parents=True, exist_ok=True)
+        POSITIONS_DIR.mkdir(parents=True, exist_ok=True)
         try:
             self.camera.initialize()
         except Exception:
@@ -127,6 +115,7 @@ class API:
         self._detection_lock = threading.Lock()
         self._detection_thread = None
 
+    # ----- Utils -----
     def _capture_loop(self):
         while self.running:
             try:
@@ -145,11 +134,13 @@ class API:
             except Exception:
                 time.sleep(0.05)
 
+
     def get_frame(self) -> str:
         with self.lock:
             if not self.last_b64:
                 return ""
             return f"data:image/jpeg;base64,{self.last_b64}"
+
 
     def save_frame(self, idx: Optional[int] = None, b64: Optional[str] = None) -> Dict[str, Any]:
         try:
@@ -191,6 +182,7 @@ class API:
             print("[API.save_frame] Error:", e)
             return {"ok": False, "error": str(e)}
 
+
     def save_json(self, content: str, filename: str) -> bool:
         try:
             POSITIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -222,36 +214,14 @@ class API:
             if not pos1 or not pos2:
                 return {"ok": False, "error": "Positions files missing or empty (positions1.json/positions2.json)"}
 
+            self.detector.calibrate_from_positions(IMG1_PATH,pos1,IMG2_PATH,pos2)
+
             det1,labs1= self.detector.detect_single_image(IMG1_PATH, pos1, use_gray_world=True)
             det2,labs2= self.detector.detect_single_image(IMG2_PATH, pos2, use_gray_world=True)
-
-            # DEBUG: print keys & per-face counts for each det
-            def summarize(det):
-                from collections import Counter
-                counts = Counter(det.values())
-                # also group by face prefix
-                per_face = {}
-                for k,v in det.items():
-                    face = k[0] if isinstance(k,str) and len(k)>0 else '?'
-                    per_face.setdefault(face, []).append((k,v))
-                per_face_summary = {face: Counter([v for (_,v) in arr]) for face,arr in per_face.items()}
-                return counts, per_face_summary
-
-            c1, pf1 = summarize(det1)
-            c2, pf2 = summarize(det2)
-            print("[API.color_detector] det1 counts:", c1, "per_face_summary:", pf1)
-            print("[API.color_detector] det2 counts:", c2, "per_face_summary:", pf2)
-            # Also log pos keys
-            print("[API.color_detector] pos1 keys:", list(pos1.keys())[:12], "pos2 keys:", list(pos2.keys())[:12])
 
             combined = {}
             combined.update(det1)
             combined.update(det2)
-
-            # DEBUG final combined summary
-            from collections import Counter
-            print("[API.color_detector] combined counts:", Counter(combined.values()))
-            print("[API.color_detector] combined sample keys:", list(combined.items())[:24])
 
             return {"ok": True, "colors": combined}
         except Exception as e:
@@ -259,59 +229,75 @@ class API:
             return {"ok":False,"colors":{}}
 
 
-    def calibrate_colors(self) -> bool:
+    def send_sequence(self, move: str) -> bool:
         try:
-            pos1 = self.load_points(0)
-            pos2 = self.load_points(1)
-            if not pos1 or not pos2:
+            self.motor_controller._write_line(move)
+            ok = self.motor_controller._wait_for_ok(OK_TIMEOUT)
+            if not ok:
+                print("No OK for move %s", move)
                 return False
-            calibrations = self.detector.calibrate_from_positions(IMG1_PATH,pos1,IMG2_PATH,pos2)
-            print(calibrations)
-            return True
-        except Exception as e:
-            print("Error detecting : "+ e)
-            return False
-
-
-    def scramble(self, moves: int = 20) -> List[str]:
-        try:
-            moves = self.motor_controller.scramble(moves)
-            print(" ".join(moves))
-            return moves
-        except Exception:
-            return []
-
-
-    def send_sequence(self, seq: str) -> bool:
-        try:
-            if not seq or str(seq).strip() == "":
-                return False
-
-            moves = seq.split(" ")
-
-            for mv in moves:
-                ok = self.motor_controller.send_sequence(mv)
-                if not ok:
-                    return False
+            with self.lock:
                 try:
-                    self.cube_status.change_status([mv])
+                    cs = self.cube_solver.cube_state
+                    if getattr(cs, "cubie_cube", None) is None:
+                        try:
+                            cs._sync_from_face_status()
+                        except Exception:
+                            pass
                 except Exception:
                     pass
+
+                try:
+                    self.cube_solver.cube_state.move(move)
+                except Exception as e:
+                    print("[API.send_sequence] Error applying move in backend:", e)
+                    return False
             return True
         except Exception as e:
-            print("[API.send_sequence] Error:", e)
+            print("[API.send_sequence] Exception:", e)
             return False
 
 
-    def solve(self) -> List[str]:
+    # ---- Huge botons -------
+
+    def scramble(self, num_moves: int = 10) -> str:
         try:
-            ok, msg = self.cube_status.solve()
-            if not ok:
-                return []
-            return self.cube_status.cube_state.solution
+            moves = self.motor_controller.scramble(num_moves)
+            move = " ".join(moves)
+            print("Scramble:"+move)
+            return move
         except Exception:
             return []
 
+
+    def solve(self, face_to_color: dict = None) -> Dict[str, Any]:
+        try:
+            valid, issue = self.cube_solver.solve(face_to_color)
+
+            if valid:
+                return {
+                    "ok": True,
+                    "solution": self.cube_solver.cube_state.solution,
+                    "color_str": self.cube_solver.cube_state.color_status,
+                    "facelets":self.cube_solver.cube_state.face_status,
+                }
+            else:
+                self.cube_solver.cube_state.solution = ""
+                return {
+                    "ok": False,
+                    "error": str(issue),
+                    "color_str": self.cube_solver.cube_state.color_status,
+                    "facelets": self.cube_solver.cube_state.face_status,
+                }
+
+        except Exception as e:
+            return {"ok": False, "error": str(e), "debug": {"exception": str(e)}}
+
+
+    # ---- Small botons -------
+    def connect_arduino(self) -> bool:
+        return self.motor_controller.connect()
+            
 
     def switch_camera(self) -> bool:
         try:
@@ -320,48 +306,9 @@ class API:
             return False
 
 
-    def validate_cube_state(self, face_to_color: dict = None) -> Dict[str, Any]:
-        try:
-            if face_to_color is None:
-                ok, mens = self.cube_status.solve()
-                if ok:
-                    return {"ok": True, "solution": self.cube_status.cube_state.solution}
-                else:
-                    return {"ok": False, "error": mens}
-
-            try:
-                print(face_to_color)
-                self.cube_status.solve_from_detect(face_to_color)
-                print("solution : "+self.cube_status.cube_state.solution)
-            except Exception as e:
-                return {"ok": False, "error": f"build_facelets failed: {e}"}
-
-            # Validate normalized face_status
-            valid, issue = self.cube_status.validate_state()
-
-            if valid:
-                return {
-                    "ok": True,
-                    "solution": self.cube_status.cube_state.solution,
-                    "color_str": self.cube_status.cube_state.color_status,
-                    "facelets":self.cube_status.cube_state.face_status,
-                }
-            else:
-                self.cube_status.cube_state.solution = ""
-                return {
-                    "ok": False,
-                    "error": str(issue),
-                    "color_str": self.cube_status.cube_state.color_status,
-                    "facelets": self.cube_status.cube_state.face_status,
-                }
-
-        except Exception as e:
-            return {"ok": False, "error": str(e), "debug": {"exception": str(e)}}
-
-
     def reset_cube_state(self):
         try:
-            self.cube_status.cube_state.reset_state()
+            self.cube_solver.cube_state.reset_state()
         except Exception:
             pass
 
@@ -370,5 +317,6 @@ class API:
         self.running = False
         try:
             self.camera.release()
+            webview.windows[0].destroy()
         except Exception:
             pass

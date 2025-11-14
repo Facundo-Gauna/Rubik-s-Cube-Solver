@@ -26,6 +26,7 @@ function startPreviewLoop(previewImgElement) {
     previewInterval = setTimeout(frameLoop, 100);
   })();
 }
+
 function stopPreviewLoop() {
   if (previewInterval) {
     clearTimeout(previewInterval);
@@ -204,7 +205,7 @@ function showAdjustPointsView() {
             <canvas class="points-canvas" style="position:absolute;left:0;top:0;"></canvas>
         </div>
     </div>
-    <div class="color-buttons-container" style="display:none; margin:1rem 0; text-align:center;">
+    <div class="color-buttons-container" style="display:none; margin:0; text-align:center;">
         <button class="color-btn" data-color="W" style="background:white;"></button>
         <button class="color-btn" data-color="Y" style="background:yellow;"></button>
         <button class="color-btn" data-color="R" style="background:red;"></button>
@@ -230,15 +231,33 @@ function showAdjustPointsView() {
       "L7":[705,740], "L8":[825,835], "L9":[988,964]
     },
     {
-      "D1":[702,276], "D2":[886,185], "D3":[1038,117],
-      "D4":[851,356], "D5":[1034,270], "D6":[1193,186],
-      "D7":[1031,476], "D8":[1215,353], "D9":[1368,265],
-      "R1":[628,421], "R2":[768,514], "R3":[940,634],
-      "R4":[668,589], "R5":[800,691], "R6":[962,809],
-      "R7":[705,740], "R8":[825,835], "R9":[988,964],
-      "B1":[1112,629], "B2":[1299,503], "B3":[1447,412],
-      "B4":[1127,804], "B5":[1285,681], "B6":[1422,581],
-      "B7":[1132,949], "B8":[1273,825], "B9":[1403,727],
+      "D1": [702, 276],
+      "D2": [886, 185],
+      "D3": [1038, 117],
+      "D4": [851, 356],
+      "D5": [1034, 270],
+      "D6": [1193, 186],
+      "D7": [1031, 476],
+      "D8": [1215, 353],
+      "D9": [1368, 265],
+      "R1": [1112, 629],
+      "R2": [1299, 503],
+      "R3": [1447, 412],
+      "R4": [1127, 804],
+      "R5": [1285, 681],
+      "R6": [1422, 581],
+      "R7": [1132, 949],
+      "R8": [1273, 825],
+      "R9": [1403, 727],
+      "B1": [628, 421],
+      "B2": [768, 514],
+      "B3": [940, 634],
+      "B4": [668, 589],
+      "B5": [800, 691],
+      "B6": [962, 809],
+      "B7": [705, 740],
+      "B8": [825, 835],
+      "B9": [988, 964]
     }
   ];
 
@@ -263,14 +282,6 @@ function showAdjustPointsView() {
 
     try {
       
-      // Antes de: await window.pywebview.api.save_json(JSON.stringify(pointsData[0]), "positions1.json");
-      console.log(">>> DEBUG saving positions BEFORE API call");
-      console.log("positionsData[0] sample keys:", Object.keys(pointsData[0]).slice(0,12));
-      console.log("positionsData[1] sample keys:", Object.keys(pointsData[1]).slice(0,12));
-      // Also dump full coords for visual inspection (but be careful with verbosity)
-      console.log("positions1 full:", pointsData[0]);
-      console.log("positions2 full:", pointsData[1]);
-
       await window.pywebview.api.save_json(JSON.stringify(pointsData[0]), "positions1.json");
       await window.pywebview.api.save_json(JSON.stringify(pointsData[1]), "positions2.json");
 
@@ -294,11 +305,10 @@ function showAdjustPointsView() {
   });
 }
 
-// Reemplazar / insertar dentro de scaner.js: función saveColorsClick() mejorada
 async function saveColorsClick() {
   if (!hasPywebview()) return false;
   try {
-    // construir lettersMap como antes
+
     const lettersMap = {};
     for (const idx in pointElements) {
       for (const key in pointElements[idx]) {
@@ -306,28 +316,8 @@ async function saveColorsClick() {
       }
     }
 
-    // --- VALIDACIONES Y DIAGNÓSTICO LOCAL ---
-    // Keys esperadas (orden Kociemba U,R,F,D,L,B)
-    const expectedKeys = [];
-    ['U','R','F','D','L','B'].forEach(f => { for (let i=1;i<=9;i++) expectedKeys.push(f+i); });
-    const keys = Object.keys(lettersMap).sort();
-    const missing = expectedKeys.filter(k => !keys.includes(k));
-    const extra = keys.filter(k => !expectedKeys.includes(k));
-    console.log("lettersMap keys count:", keys.length, "missing:", missing, "extra:", extra);
-
-    // Mostrar muestra
-    console.log("sample lettersMap:", Object.fromEntries(keys.slice(0,18).map(k => [k, lettersMap[k]])));
-
-    // Obtener centros detectados (el sticker X5 es el centro de cada cara)
-    const faceCenters = {};
-    ['U','R','F','D','L','B'].forEach(f => {
-      const k = `${f}5`;
-      faceCenters[f] = lettersMap[k] || null;
-    });
-    console.log("Detected face centers (from lettersMap):", faceCenters);
-
     // --- Corrección: intercambiar caras R y B ---
-    const tempR = {};
+    /*const tempR = {};
     const tempB = {};
 
     for (let i = 1; i <= 9; i++) {
@@ -340,17 +330,14 @@ async function saveColorsClick() {
       lettersMap[`R${i}`] = tempB[`B${i}`];
       lettersMap[`B${i}`] = tempR[`R${i}`];
     }
-    console.log("✅ Intercambio aplicado: caras R y B corregidas.");
 
     // --- Corrección: intercambiar colores W y O ---
     for (const k in lettersMap) {
       if (lettersMap[k] === "W") lettersMap[k] = "O";
       else if (lettersMap[k] === "O") lettersMap[k] = "W";
     }
-    console.log("✅ Intercambio aplicado: colores W ↔ O corregidos.");
-
-
-    const val = await window.pywebview.api.validate_cube_state(lettersMap);
+*/
+    const val = await window.pywebview.api.solve(lettersMap);
 
     if (!val || !val.ok) {
       alert("Error en validación backend: " + ((val && val.error) || "desconocido"));
@@ -359,16 +346,9 @@ async function saveColorsClick() {
     }
 
     solution = val.solution;
-    
-    const moves = solution.trim().split(/\s+/).reverse();
 
-    const inverso = moves.map(move => {
-      if (move.endsWith("2")) return move; // giros dobles son su propio inverso
-      else if (move.endsWith("'")) return move.slice(0, -1); // U' → U
-      else return move + "'"; // U → U'
-    }).join(' ');
-
-    rubik.SecuenciaInstantanea(inverso);
+    rubik.SecuenciaInstantanea(invert(solution));
+    rubik.habilitar_desactivar_teclas(false);
 
     EscaneoCompleto();
     return true;
@@ -378,7 +358,6 @@ async function saveColorsClick() {
     return false;
   }
 }
-
 
 async function loadAndApplyPointColors() {
   if (!hasPywebview()) return;
@@ -418,34 +397,10 @@ async function loadAndApplyPointColors() {
   }
 }
 
-async function validatePointColors() {
-  if (!hasPywebview()) return false;
-  try {
-    const lettersMap = {};
-    for (const idx in pointElements) {
-      for (const key in pointElements[idx]) {
-        lettersMap[key] = (pointElements[idx][key].color || "W").toUpperCase().charAt(0);
-      }
-    }
-   // console.log(">>> DEBUG final lettersMap about to send (sample 24):", Object.fromEntries(Object.keys(lettersMap).slice(0,24).map(k => [k, lettersMap[k]])));
-
-    const res = await window.pywebview.api.validate_cube_state(lettersMap);
-    if (!res || !res.ok) {
-      alert("Error en validación: " + ((res && res.error) || "desconocido"));
-      return false;
-    }
-
-    solution = Array.isArray(res.solution) ? res.solution.join(" ") : (res.solution || "");
-    alert("Colores válidos");
-    return true;
-  } catch (e) {
-    console.error("Error guardando colores:", e);
-    alert("Error guardando colores: " + e);
-    return false;
-  }
-}
-
 function EscaneoCompleto() {
+  setCalibratedStatus(true);
+  rubik.clicked_list.length = 0;
+
   panelTitle.textContent = "Escaneo completo";
   panelContent.innerHTML = `
     <div class="scan-complete-container">
@@ -462,47 +417,61 @@ function EscaneoCompleto() {
 }
 
 document.getElementById("solve-btn").addEventListener("click", async () => {
-  if (!solution || solution.length === 0) {
-    alert("No hay solución calculada");
-    return;
+  if(solution == ""){
+      if(rubik.clicked_list.length > 0){
+        const clickedSol = invert(rubik.clicked_list.join(" "))
+        await rubik.SecuenciaDeGiros(clickedSol);
+        await sleep(2000);
+        rubik.clicked_list.length = 0;
+      }else return;
   }
   const seqStr = solution.trim();
   if (!seqStr) return;
-  const moves = seqStr.split(/\s+/).filter(Boolean);
+  console.log(seqStr);
 
   try {
-    for (const move of moves) {
-      await rubik.RotarCara(move);
-    }
+    await rubik.SecuenciaDeGiros(seqStr);
+    rubik.clicked_list.length = 0;
     console.log("Solve sequence completed");
-    solution = ""
   } catch (e) {
     console.error("Error during solve sequence:", e);
     alert("Error al ejecutar solución: " + (e.message || e));
   }
+  solution = "";
+  rubik.habilitar_desactivar_teclas(true);
 });
+
+function invert(seq){
+  const moves = seq.trim().split(/\s+/).reverse();
+  return moves.map(move => {
+    if (move.endsWith("2")) return move; // giros dobles son su propio inverso
+    else if (move.endsWith("'")) return move.slice(0, -1); // U' → U
+    else return move + "'"; // U → U'
+  }).join(' ');
+
+}
+function sleep(ms) { return new Promise(res => setTimeout(res, ms)); }
 
 document.getElementById("scramble-btn").addEventListener("click", async () => {
   try {
+    if(solution != "") return;
+    rubik.habilitar_desactivar_teclas(false);
+    if(rubik.clicked_list.length > 0){
+      const clickedSol = invert(rubik.clicked_list.join(" "))
+      await rubik.SecuenciaDeGiros(clickedSol);
+      await sleep(2000);
+      rubik.clicked_list.length = 0;
+    }
     const seq = await window.pywebview.api.scramble();
-    for (const move of seq) {
-      await rubik.RotarCara(move);
-    }
-
-    const res = await window.pywebview.api.validate_cube_state();
-    if (!res.ok) {
-      alert("Error en validación: " + (res.error || "desconocido"));
-      return;
-    }
-    solution = Array.isArray(res.solution) ? res.solution.join(" ") : (res.solution || "");
-    alert("Cubo mezclado");
+    await rubik.SecuenciaDeGiros(seq);
+    solution = invert(seq);
   } catch (e) {
     console.error("Error al ejecutar scramble:", e);
     alert("Error en scramble: " + (e.message || e));
   }
 });
 
-// --- drawPoints, attachDragHandlers, enableColorMode (las mantuve iguales) ---
+
 function drawPoints(idx, canvas, ctx, positions) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const scaleX = canvas.width / 1920;

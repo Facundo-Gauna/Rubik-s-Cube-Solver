@@ -32,6 +32,11 @@ body {
   letter-spacing: 0.5px;
 }
 
+.status-container{
+  display: flex;
+  align-items: center;
+  gap: 3rem;
+}
 .status {
   display: flex;
   align-items: center;
@@ -98,11 +103,12 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 2rem;
   flex: 1;
   justify-content: flex-start;
   overflow-y: auto;
   position: relative;
+  padding-top: 0.5rem;
 }
 
 /* ----- Vista de patrones ----- */
@@ -142,8 +148,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 2rem;
-  background: #ffffffcc;
+  padding: 0.7rem 2rem;
   backdrop-filter: blur(10px);
   border-top: 1px solid #dfe3ea;
   box-shadow: 0 -2px 8px rgba(0,0,0,0.05);
@@ -322,7 +327,7 @@ body {
 .action-btn.next-btn {
   display: block;
   margin: 0.5rem auto 0;
-  padding: 0.6rem 1.2rem;
+  padding: 1rem 1.2rem;
   background: #4f46e5;
   color: #fff;
   font-size: 1rem;
@@ -353,7 +358,6 @@ body {
     display: flex;
     justify-content: center;
     gap: 0.5rem;
-    margin: 1rem 0;
 }
 
 .color-btn {
@@ -438,4 +442,389 @@ body {
 }
 
 
+
+/* =========================================================
+   🌙 MODO OSCURO ACTIVADO (solo colores, sin alterar diseño)
+   ========================================================= */
+body.dark-mode {
+  background: #0f1116;
+  color: #f0f0f0;
+}
+
+/* ----- Barra superior ----- */
+body.dark-mode .topbar {
+  background: #1a1d24cc;
+  color: #eaeaea;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .status-dot {
+  background: #666;
+}
+
+body.dark-mode .status-dot.connected {
+  background: #4caf50;
+}
+
+/* ----- Área principal ----- */
+body.dark-mode .cube-area {
+  background: linear-gradient(145deg, #1c1f27, #14161c);
+  border-right: 2px solid #2b2f38;
+}
+
+body.dark-mode .side-panel {
+  background: #1c1f27;
+  border-left: 2px solid #2b2f38;
+  color: #f0f0f0;
+}
+
+body.dark-mode .panel-header {
+  border-bottom: 2px solid #2b2f38;
+}
+
+body.dark-mode .panel-header h2 {
+  color: #ffffff;
+}
+
+body.dark-mode .bottom-bar {
+  border-top: 1px solid #444;
+}
+/* ----- Fondos de patrones ----- */
+body.dark-mode .pattern {
+  background-color: #22252e;
+  border-color: #444;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+
+/* ----- Scrollbar ----- */
+body.dark-mode .panel-content::-webkit-scrollbar-thumb {
+  background: #444;
+}
+body.dark-mode .panel-content::-webkit-scrollbar-thumb:hover {
+  background: #666;
+}
+
+/* ----- Canvas / contenedores ----- */
+body.dark-mode .canvas-wrapper,
+body.dark-mode .img-wrapper,
+body.dark-mode .photo-box {
+  background-color: #1a1d25;
+  border-color: #333;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.4);
+}
+
+/* ----- Botones ----- */
+body.dark-mode .action-btn {
+  background: linear-gradient(135deg, #2c2f3a, #3b4052);
+  color: #e5e5e5;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .action-btn.next-btn {
+  background: #3949ab;
+}
+
+body.dark-mode .action-btn.next-btn:hover {
+  background: #303f9f;
+}
+
+/* ----- Sección cámara y escaneo ----- */
+body.dark-mode .camera-view {
+  background-color: #222630;
+}
+
+/* ----- Sección "Scan Complete" ----- */
+body.dark-mode .scan-complete-container {
+  background: #1a1d25;
+  color: #e0e0e0;
+}
+
+body.dark-mode .scan-complete-container h2 {
+  color: #ffffff;
+}
+
+body.dark-mode .scan-complete-container p {
+  color: #bbbbbb;
+}
+
+body.dark-mode .scan-complete-container .action-btn {
+  background: linear-gradient(135deg, #43a047, #2e7d32);
+}
+
+/* ----- Fondo de la escena del cubo ----- */
+body.dark-mode #cuboContainer {
+  background-color: #0c0e12;
+  border-color: #222;
+}
+
+
+* {
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+
+
+
+
+/* =========================================================
+   ✨ BOTONES MODERNOS (Action Buttons) - ROJO
+   ========================================================= */
+
+.action-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(145deg, #ffb3b3, #ff8080);
+  border: 1px solid #e66868;
+  padding: 0.9rem 1.8rem;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #2c2c2c;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  box-shadow:
+    4px 4px 10px rgba(0, 0, 0, 0.08),
+    -3px -3px 10px rgba(255, 255, 255, 0.7);
+}
+
+/* 💫 Hover */
+.action-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow:
+    6px 6px 14px rgba(0, 0, 0, 0.1),
+    -4px -4px 14px rgba(255, 255, 255, 0.8);
+  background: linear-gradient(145deg, #ff8080, #ff9999);
+}
+
+/* ✨ Click */
+.action-btn:active {
+  transform: scale(0.97);
+  box-shadow:
+    inset 3px 3px 6px rgba(0, 0, 0, 0.15),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.8);
+}
+
+/* 🚫 Disabled */
+.action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+
+
+/* =========================================================
+   🌙 MODO OSCURO - ROJO PREMIUM
+   ========================================================= */
+body.dark-mode .action-btn {
+  background: linear-gradient(145deg, #b50000, #8b0000);
+  color: #ffeaea;
+  box-shadow:
+    3px 3px 8px rgba(0, 0, 0, 0.6),
+    -3px -3px 8px rgba(255, 255, 255, 0.08);
+}
+
+body.dark-mode .action-btn:hover {
+  background: linear-gradient(145deg, #cc0000, #990000);
+  box-shadow:
+    5px 5px 10px rgba(0, 0, 0, 0.6),
+    -3px -3px 10px rgba(255, 255, 255, 0.1);
+}
+
+/* 🟦 next-btn conserva su estilo azul original */
+body.dark-mode .action-btn.next-btn {
+  background: linear-gradient(135deg, #3949ab, #283593);
+  box-shadow: 0 4px 10px rgba(57, 73, 171, 0.4);
+}
+
+body.dark-mode .action-btn.next-btn:hover {
+  background: linear-gradient(135deg, #3f51b5, #2e3a8c);
+}
+
+.action-btn i {
+  margin-right: 0.5rem;
+  font-size: 1.1rem;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.action-btn:hover i {
+  opacity: 1;
+}
+
+
+/* =========================================================
+   🌙 EFECTO BRILLO SOLO EN MODO OSCURO
+   ========================================================= */
+
+body.dark-mode .action-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ✨ Brillo diagonal animado */
+body.dark-mode .action-btn::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -120%;
+  width: 120%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.25),
+    transparent
+  );
+  transition: all 0.6s ease;
+  pointer-events: none;
+}
+
+body.dark-mode .action-btn:hover::before {
+  left: 100%;
+}
+
+/* Contraste extra en hover */
+body.dark-mode .action-btn:hover {
+  background: linear-gradient(145deg, #cc0000, #990000);
+}
+
+
+
+
+
+
+/* =========================================================
+   🔹 VARIANTE “NEXT” (botón principal de avance)
+   ========================================================= */
+.action-btn.next-btn {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #fff;
+  border: 1px solid #25207a;
+  box-shadow:
+    0 4px 12px rgba(99, 102, 241, 0.4),
+    0 0 0 2px rgba(255, 255, 255, 0.2) inset;
+}
+
+.action-btn.next-btn:hover {
+  background: linear-gradient(135deg, #4f46e5, #4338ca);
+}
+
+.action-btn.next-btn:active {
+  transform: scale(0.96);
+}
+
+/* =========================================================
+   💫 CRÉDITOS - ESTILO ELEGANTE
+   ========================================================= */
+
+.credits {
+  text-align: center;
+  line-height: 1.4;
+  font-family: "Poppins", sans-serif;
+  margin-left: 3.7rem;
+}
+
+.credits-title {
+  font-size: 1.2rem;
+  color: #666;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.1rem;
+}
+
+.credits-names {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #222;
+}
+
+/* 🌙 Versión modo oscuro */
+body.dark-mode .credits-title {
+  color: #aaa;
+}
+
+body.dark-mode .credits-names {
+  color: #e5e5e5;
+}
+
+/* 💎 Animación suave al pasar el mouse */
+.credits-names {
+  transition: transform 0.25s ease, color 0.25s ease;
+}
+
+.credits-names:hover {
+  transform: translateY(-2px);
+  color: #4f46e5; /* azul violeta del tema */
+}
+
+
+
+
+
+
+/* ===== Panel de ajustes ===== */
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  width: 100%;
+  height: 100%;
+  padding: 25px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+}
+
+/* Contenedor de los botones superiores */
+.settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 22px; /* más separación entre botones */
+}
+
+/* Botones del panel de ajustes */
+.settings-btn-panel {
+  background: linear-gradient(135deg, #3a7bd5, #00d2ff);
+  border: none;
+  color: #fff;
+  padding: 14px 18px;
+  font-size: 15px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  text-align: center;
+  font-weight: 500;
+  width: 100%;
+}
+
+.settings-btn-panel:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 15px rgba(0, 150, 255, 0.3);
+}
+
+/* Botón de salida abajo */
+.settings-exit {
+  margin-top: auto;
+  background: linear-gradient(135deg, #d53369, #daae51);
+}
+
+.settings-exit:hover {
+  box-shadow: 0 4px 15px rgba(213, 51, 105, 0.4);
+}
+
+/* ===== Modo oscuro ===== */
+body.dark-mode .settings-panel {
+  background: rgba(20, 20, 25, 0.8);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.6);
+}
+
+body.dark-mode .settings-btn-panel {
+  background: linear-gradient(135deg, #0062ff, #00c6ff);
+}
+
+body.dark-mode .settings-exit {
+  background: linear-gradient(135deg, #ff4b2b, #ff416c);
+}
 

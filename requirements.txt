@@ -7,11 +7,9 @@ pycparser==2.21
 kociemba # 1.21
 
 scikit-learn==1.2.2
-tensorflow==2.12.0
 pyserial==3.5 # python -m serial.tools.list_ports
 cython==0.29.37
 opencv-python==4.8.0.76
-matplotlib==3.7.2
 nltk==3.8.1
 numpy==1.23.5
 dill==0.3.6
