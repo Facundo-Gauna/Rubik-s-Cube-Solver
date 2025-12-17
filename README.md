@@ -13,9 +13,7 @@ Thanks to the final result, the project was even shown on **local television**, 
 
 🎥 Project clip:
 
-```html
 <iframe width="560" height="315" src="https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx?si=U-WYBOIson4tcU6o" frameborder="0" allowfullscreen></iframe>
-```
 
 ---
 
@@ -253,7 +251,7 @@ pywebview
 
 ---
 
-## Technical Overview (Brief)
+## Technical Overview
 
 ### Kociemba Solver
 
