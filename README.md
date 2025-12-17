@@ -14,7 +14,7 @@ Thanks to the final result, the project was even shown on **local television**, 
 🎥 Project clip:
 
 [![Cube Solver on TV](https://img.youtube.com/vi/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx/0.jpg)](
-https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx
+[https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx](https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx?si=2z9-i9Nz1xTEoJyL)
 )
 
 ---
