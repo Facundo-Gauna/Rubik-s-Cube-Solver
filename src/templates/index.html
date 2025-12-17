@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rubik's Cube Solver</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1>Rubik's Cube Solver</h1>
+    <div class="status-container">
+      <div class="status">
+        <span id="status-calibrated-dot" class="status-dot"></span>
+        <p id="status-calibrated-text">Cube Not Calibrated</p>
+      </div>
+      <div class="status">
+        <span id="status-arduino-dot" class="status-dot"></span>
+        <p id="status-arduino-text">Arduino Disconnected</p>
+      </div>
+    </div>
+  </header>
+
+
+  <main class="main-container">
+    <section class="cube-area">
+      <div id="cuboContainer"></div>
+    </section>
+
+    <aside class="side-panel">
+      <div class="panel-header">
+        <h2 id="panel-title">Panel Control</h2>
+      </div>
+      <div class="panel-content" id="panel-content">
+      </div>
+    </aside>
+  </main>
+
+  <div id="sequence-display" class="sequence-display" aria-live="polite" role="status" title="Última secuencia ejecutada">
+    <strong class="seq-label">Sequence:</strong>
+    <span id="sequence-summary" class="sequence-summary">—</span>
+  </div>
+
+
+
+  <footer class="bottom-bar">
+    <div class="bottom-left">
+      <button class="action-btn" id="solve-btn">
+        <i class="fa-solid fa-brain"></i> Solve
+      </button>
+      <button class="action-btn" id="scramble-btn">
+        <i class="fa-solid fa-shuffle"></i> Scramble
+      </button>
+      <button class="action-btn" id="patterns-btn">
+        <i class="fa-solid fa-palette"></i> Patterns
+      </button>
+      <button class="action-btn" id="scan-btn">
+        <i class="fa-solid fa-camera"></i> Scaner
+      </button>
+      <button class="action-btn" id="settings-btn">
+        <i class="fa-solid fa-gear"></i> Settings
+      </button>
+    </div>
+    <div class="bottom-right">
+      <div class="credits">
+        <p class="credits-names">Ulises Carnevale & Facundo Gauna</p>
+        <button id="theme-toggle-btn" class="theme-toggle" aria-pressed="false" title="Toggle light / dark mode"></button>
+
+      </div>
+    </div>
+
+  </footer>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="js/cube3d.js"></script>
+  <script>
+    const container = document.getElementById('cuboContainer');
+    const rubik = initRubik3D(container);
+    document.body.classList.add('dark-mode');
+  </script>
+  <script src="js/settings.js" defer></script>
+  <script src="js/patterns.js" defer></script>
+  <script src="js/scaner.js" defer></script>
+
+
+</body>
+</html>
