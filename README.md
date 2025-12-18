@@ -11,7 +11,9 @@ This is a **school project**, and we are fully aware that many parts of the code
 
 Thanks to the final result, the project was even shown on **local television**, which was an amazing experience for us.
 
-🎥 Project clip: https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx](https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx?si=2z9-i9Nz1xTEoJyL
+![Shool_Presentation](md_content/school_presentation.png)
+
+🎥 Project clip: [ https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx](https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx?si=2z9-i9Nz1xTEoJyL](https://youtu.be/74o5sZHzbvE?si=eQi8othJR0WTJQVE&t=477)
 
 ---
 
