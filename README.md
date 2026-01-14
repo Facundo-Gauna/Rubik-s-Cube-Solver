@@ -13,7 +13,7 @@ Thanks to the final result, the project was even shown on **local television**, 
 
 ![Shool_Presentation](md_content/school_presentation.png)
 
-🎥 Project clip: [ https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx](https://youtube.com/clip/Ugkx9b7l1FSXjTx9D-Te3ChFuQyd7EG_5wKx?si=2z9-i9Nz1xTEoJyL](https://youtu.be/74o5sZHzbvE?si=eQi8othJR0WTJQVE&t=477)
+🎥 Project clip at 7:57 : [https://youtu.be/74o5sZHzbvE?si=WdKIK2v5d-zpKDED]
 
 ---
 
